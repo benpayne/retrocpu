@@ -1,6 +1,9 @@
 # RetroCPU .gitignore
 # FPGA build artifacts and temporary files
 
+# Python virtual environment
+venv/
+
 # Build directories
 build/synth/
 build/pnr/
