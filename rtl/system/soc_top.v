@@ -147,10 +147,11 @@ module soc_top (
     );
 
     // ========================================================================
-    // Data Bus Multiplexer
+    // Data Bus Multiplexer (Registered to break combinational loops)
     // ========================================================================
 
     reg [7:0] cpu_data_in_mux;
+    reg [7:0] cpu_data_in_reg;
 
     always @(*) begin
         case (1'b1)
@@ -158,11 +159,20 @@ module soc_top (
             rom_basic_cs:   cpu_data_in_mux = rom_basic_data_out;
             rom_monitor_cs: cpu_data_in_mux = rom_monitor_data_out;
             uart_cs:        cpu_data_in_mux = uart_data_out;
-            default:        cpu_data_in_mux = 8'hFF;  // Unmaped reads return $FF
+            default:        cpu_data_in_mux = 8'hFF;  // Unmapped reads return $FF
         endcase
     end
 
-    assign cpu_data_in = cpu_data_in_mux;
+    // Register the data bus to break the combinational loop
+    always @(posedge clk_25mhz) begin
+        if (system_rst) begin
+            cpu_data_in_reg <= 8'h00;
+        end else begin
+            cpu_data_in_reg <= cpu_data_in_mux;
+        end
+    end
+
+    assign cpu_data_in = cpu_data_in_reg;
 
     // ========================================================================
     // CPU Instance

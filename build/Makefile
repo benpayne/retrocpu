@@ -109,7 +109,7 @@ synth: dirs check-firmware
 	$(YOSYS) $(YOSYS_FLAGS) -p \
 		"read_verilog -sv $(RTL_SOURCES); \
 		 hierarchy -check -top $(TOP); \
-		 synth_ecp5 -top $(TOP) -json $(JSON)" \
+		 synth_ecp5 -noabc9 -top $(TOP) -json $(JSON)" \
 		2>&1 | tee $(SYNTH_DIR)/yosys.log
 	@echo "Synthesis complete: $(JSON)"
 

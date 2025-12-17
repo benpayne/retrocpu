@@ -88,27 +88,34 @@ module uart #(
         end
     end
 
-    // Read logic (combinational)
-    always @(*) begin
-        data_out = 8'h00;  // Default
+    // Read logic (registered to break combinational loops)
+    // Register the address to avoid addr->data_out->CPU feedback
+    reg [7:0] addr_reg;
 
-        if (cs && !we) begin
-            case (addr)
-                ADDR_DATA: begin
-                    // Read data register (future: RX data)
-                    data_out = 8'h00;  // No RX yet
-                end
-                ADDR_STATUS: begin
-                    // Read status register
-                    data_out[0] = ~tx_busy;  // TX ready = NOT busy
-                    data_out[1] = 1'b0;      // RX ready (future)
-                    data_out[7:2] = 6'b000000; // Reserved
-                end
-                default: begin
-                    data_out = 8'h00;
-                end
-            endcase
+    always @(posedge clk) begin
+        if (rst) begin
+            addr_reg <= 8'h00;
+        end else begin
+            addr_reg <= addr;
         end
+    end
+
+    always @(*) begin
+        case (addr_reg)
+            ADDR_DATA: begin
+                // Read data register (future: RX data)
+                data_out = 8'h00;  // No RX yet
+            end
+            ADDR_STATUS: begin
+                // Read status register
+                data_out[0] = ~tx_busy;  // TX ready = NOT busy
+                data_out[1] = 1'b0;      // RX ready (future)
+                data_out[7:2] = 6'b000000; // Reserved
+            end
+            default: begin
+                data_out = 8'h00;
+            end
+        endcase
     end
 
 endmodule

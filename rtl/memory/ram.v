@@ -42,13 +42,8 @@ module ram #(
         data_out <= mem[addr];
     end
 
-    // Optional: Initialize memory for simulation
-    // (Not synthesized - only for testbench)
-    integer i;
-    initial begin
-        for (i = 0; i < (1<<ADDR_WIDTH); i = i + 1) begin
-            mem[i] = 8'h00;
-        end
-    end
+    // Note: No initialization needed for block RAM
+    // Block RAM contents are undefined at power-on (expected behavior)
+    // Use ROM or CPU initialization if specific values needed
 
 endmodule
