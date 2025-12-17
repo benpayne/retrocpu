@@ -1,0 +1,60 @@
+# RetroCPU .gitignore
+# FPGA build artifacts and temporary files
+
+# Build directories
+build/synth/
+build/pnr/
+*.bit
+*.config
+*.json
+*.log
+
+# Firmware build artifacts
+*.o
+*.elf
+*.bin
+*.lst
+*.map
+
+# Simulation artifacts
+*.vcd
+*.fst
+*.ghw
+*.vvp
+*.out
+sim_build/
+__pycache__/
+*.pyc
+.pytest_cache/
+results.xml
+
+# cocotb artifacts
+tests/**/*.vcd
+tests/**/*.fst
+tests/**/sim_build/
+
+# Editor artifacts
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-*
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+*.bak
+
+# Tool-specific
+.gtkwaverc
+*.gtkw~
+
+# Don't ignore submodules
+!rtl/cpu/arlet-6502/
+
+# Keep hex files (firmware output)
+!*.hex
+
+# Keep Makefile outputs
+!*.rpt

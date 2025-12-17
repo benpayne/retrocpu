@@ -20,10 +20,10 @@ description: "Task list template for feature implementation"
 
 ## Path Conventions
 
-- **Single project**: `src/`, `tests/` at repository root
-- **Web app**: `backend/src/`, `frontend/src/`
-- **Mobile**: `api/src/`, `ios/src/` or `android/src/`
-- Paths shown below assume single project - adjust based on plan.md structure
+- **FPGA/HDL project**: `rtl/` for Verilog modules, `tests/` for cocotb tests
+- **Module organization**: `rtl/core/`, `rtl/memory/`, `rtl/peripherals/`, `rtl/top/`
+- **Test organization**: `tests/unit/` for module tests, `tests/integration/` for system tests
+- Paths shown below assume FPGA structure - adjust based on plan.md structure
 
 <!-- 
   ============================================================================
@@ -48,9 +48,9 @@ description: "Task list template for feature implementation"
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+- [ ] T001 Create project structure per implementation plan (rtl/, tests/, docs/)
+- [ ] T002 Initialize cocotb test framework with sample test
+- [ ] T003 [P] Configure Verilog linting and simulation tools (iverilog/verilator)
 
 ---
 
@@ -62,12 +62,12 @@ description: "Task list template for feature implementation"
 
 Examples of foundational tasks (adjust based on your project):
 
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
+- [ ] T004 Define bus protocol and timing specifications
+- [ ] T005 [P] Create common parameter definitions (data widths, addresses)
+- [ ] T006 [P] Implement clock and reset infrastructure
+- [ ] T007 Create base module templates with standard interfaces
+- [ ] T008 Setup waveform viewing and debugging workflow
+- [ ] T009 Configure synthesis constraints and timing requirements
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -79,21 +79,21 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 1 (MANDATORY per TDD principle) ⚠️
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T010 [P] [US1] Unit test for [module] in tests/unit/test_[module].py (cocotb)
+- [ ] T011 [P] [US1] Integration test for [module interaction] in tests/integration/test_[system].py
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Create [Entity1] model in src/models/[entity1].py
-- [ ] T013 [P] [US1] Create [Entity2] model in src/models/[entity2].py
-- [ ] T014 [US1] Implement [Service] in src/services/[service].py (depends on T012, T013)
-- [ ] T015 [US1] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T016 [US1] Add validation and error handling
-- [ ] T017 [US1] Add logging for user story 1 operations
+- [ ] T012 [P] [US1] Create [Module1] Verilog module in rtl/[category]/[module1].v
+- [ ] T013 [P] [US1] Create [Module2] Verilog module in rtl/[category]/[module2].v
+- [ ] T014 [US1] Integrate modules in rtl/[category]/[integration].v (depends on T012, T013)
+- [ ] T015 [US1] Add timing constraints for module in docs/timing/[module].md
+- [ ] T016 [US1] Verify simulation passes all test cases
+- [ ] T017 [US1] Document module interface and usage in docs/modules/[module].md
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -105,17 +105,17 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 2 (MANDATORY per TDD principle) ⚠️
 
-- [ ] T018 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T019 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T018 [P] [US2] Unit test for [module] in tests/unit/test_[module].py (cocotb)
+- [ ] T019 [P] [US2] Integration test for [module interaction] in tests/integration/test_[system].py
 
 ### Implementation for User Story 2
 
-- [ ] T020 [P] [US2] Create [Entity] model in src/models/[entity].py
-- [ ] T021 [US2] Implement [Service] in src/services/[service].py
-- [ ] T022 [US2] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T023 [US2] Integrate with User Story 1 components (if needed)
+- [ ] T020 [P] [US2] Create [Module] Verilog module in rtl/[category]/[module].v
+- [ ] T021 [US2] Integrate with existing bus/protocol in rtl/[category]/[integration].v
+- [ ] T022 [US2] Add timing constraints and verify in simulation
+- [ ] T023 [US2] Document module and integrate with User Story 1 (if needed)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -127,16 +127,16 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 3 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 3 (MANDATORY per TDD principle) ⚠️
 
-- [ ] T024 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T025 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T024 [P] [US3] Unit test for [module] in tests/unit/test_[module].py (cocotb)
+- [ ] T025 [P] [US3] Integration test for [module interaction] in tests/integration/test_[system].py
 
 ### Implementation for User Story 3
 
-- [ ] T026 [P] [US3] Create [Entity] model in src/models/[entity].py
-- [ ] T027 [US3] Implement [Service] in src/services/[service].py
-- [ ] T028 [US3] Implement [endpoint/feature] in src/[location]/[file].py
+- [ ] T026 [P] [US3] Create [Module] Verilog module in rtl/[category]/[module].v
+- [ ] T027 [US3] Integrate module with system in rtl/[category]/[integration].v
+- [ ] T028 [US3] Verify timing and document module behavior
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -150,12 +150,12 @@ Examples of foundational tasks (adjust based on your project):
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] TXXX [P] Documentation updates in docs/
-- [ ] TXXX Code cleanup and refactoring
-- [ ] TXXX Performance optimization across all stories
-- [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
-- [ ] TXXX Security hardening
-- [ ] TXXX Run quickstart.md validation
+- [ ] TXXX [P] Documentation updates in docs/ (module guides, tutorials)
+- [ ] TXXX Code cleanup and refactoring for clarity (per Simplicity principle)
+- [ ] TXXX Timing optimization if needed (measure first, then optimize)
+- [ ] TXXX [P] Additional edge case tests in tests/unit/
+- [ ] TXXX Resource utilization review (LUT/BRAM usage)
+- [ ] TXXX Run synthesis and verify timing constraints met
 
 ---
 
@@ -198,13 +198,13 @@ Examples of foundational tasks (adjust based on your project):
 ## Parallel Example: User Story 1
 
 ```bash
-# Launch all tests for User Story 1 together (if tests requested):
-Task: "Contract test for [endpoint] in tests/contract/test_[name].py"
-Task: "Integration test for [user journey] in tests/integration/test_[name].py"
+# Launch all tests for User Story 1 together (MANDATORY per TDD):
+Task: "Unit test for [module] in tests/unit/test_[module].py (cocotb)"
+Task: "Integration test for [system] in tests/integration/test_[system].py"
 
-# Launch all models for User Story 1 together:
-Task: "Create [Entity1] model in src/models/[entity1].py"
-Task: "Create [Entity2] model in src/models/[entity2].py"
+# Launch all independent modules for User Story 1 together:
+Task: "Create [Module1] Verilog module in rtl/core/[module1].v"
+Task: "Create [Module2] Verilog module in rtl/core/[module2].v"
 ```
 
 ---

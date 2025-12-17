@@ -1,0 +1,3 @@
+[submodule "rtl/cpu/arlet-6502"]
+	path = rtl/cpu/arlet-6502
+	url = https://github.com/Arlet/verilog-6502.git

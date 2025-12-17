@@ -17,21 +17,30 @@
   the iteration process.
 -->
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-**Project Type**: [single/web/mobile - determines source structure]  
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
-**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
+**HDL Language**: Verilog (SystemVerilog for testbenches if needed)
+**Target Architecture**: 6502-compatible retro computer system
+**Testing Framework**: cocotb (Python-based HDL verification)
+**Simulation**: Icarus Verilog (iverilog) or Verilator
+**Synthesis**: Yosys or other open source synthesis tools
+**Target FPGA**: [e.g., Lattice iCE40, Xilinx Artix-7 or NEEDS CLARIFICATION]
+**Project Type**: FPGA/HDL - determines rtl/ and test/ structure
+**Timing Goals**: [e.g., 25 MHz clock, 1 cycle ALU operations or NEEDS CLARIFICATION]
+**Resource Constraints**: [e.g., <1000 LUTs, <10 BRAMs, specific dev board or NEEDS CLARIFICATION]
+**Module Scope**: [e.g., ALU only, full CPU core, system-on-chip or NEEDS CLARIFICATION]
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+Verify compliance with RetroCPU Constitution (.specify/memory/constitution.md):
+
+- [ ] **Test-Driven Design**: Confirm cocotb test framework is ready for module tests
+- [ ] **Simplicity Over Performance**: Design favors clarity and educational value
+- [ ] **Module Reusability**: Modules have clear interfaces and single responsibilities
+- [ ] **Educational Clarity**: Documentation includes learning objectives and rationale
+- [ ] **Open Source Tooling**: All tools (iverilog, cocotb, yosys) are open source
+- [ ] **Quality Gates**: Plan includes test, simulation, lint, documentation, and review gates
+- [ ] **Technology Stack**: Using Verilog, cocotb, and open source synthesis toolchain
 
 ## Project Structure
 
@@ -56,39 +65,28 @@ specs/[###-feature]/
 -->
 
 ```text
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
+# FPGA/HDL Project Structure (DEFAULT for RetroCPU)
+rtl/
+├── core/          # Core 6502 modules (ALU, registers, control)
+├── memory/        # RAM, ROM, memory controllers
+├── peripherals/   # I/O, timers, serial interfaces
+└── top/           # Top-level integration modules
 
 tests/
-├── contract/
-├── integration/
-└── unit/
+├── unit/          # cocotb unit tests for individual modules
+├── integration/   # cocotb tests for module interactions
+└── formal/        # Optional: formal verification (if used)
 
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
+docs/
+├── modules/       # Per-module documentation
+├── timing/        # Timing diagrams and constraints
+└── learning/      # Educational materials and tutorials
 
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
+sim/               # Simulation artifacts (not committed)
+└── waveforms/     # Generated waveforms for debugging
 
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+synth/             # Synthesis outputs (not committed)
+└── reports/       # Resource utilization, timing reports
 ```
 
 **Structure Decision**: [Document the selected structure and reference the real

@@ -11,13 +11,16 @@
   IMPORTANT: User stories should be PRIORITIZED as user journeys ordered by importance.
   Each user story/journey must be INDEPENDENTLY TESTABLE - meaning if you implement just ONE of them,
   you should still have a viable MVP (Minimum Viable Product) that delivers value.
-  
+
+  For HDL/FPGA projects: Each story represents a module or feature that can be verified independently
+  using cocotb tests. Tests are MANDATORY per the Test-Driven Design principle in the constitution.
+
   Assign priorities (P1, P2, P3, etc.) to each story, where P1 is the most critical.
   Think of each story as a standalone slice of functionality that can be:
-  - Developed independently
-  - Tested independently
-  - Deployed independently
-  - Demonstrated to users independently
+  - Developed independently (separate Verilog modules)
+  - Tested independently (cocotb unit and integration tests)
+  - Simulated independently (waveform verification)
+  - Synthesized independently (or as part of incremental builds)
 -->
 
 ### User Story 1 - [Brief Title] (Priority: P1)
