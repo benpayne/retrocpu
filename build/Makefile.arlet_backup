@@ -18,12 +18,9 @@ PNR_DIR = $(BUILD_DIR)/pnr
 
 # Source files
 RTL_SOURCES = \
-	$(RTL_DIR)/cpu/m65c02/M65C02_Core.v \
-	$(RTL_DIR)/cpu/m65c02/M65C02_MPCv4.v \
-	$(RTL_DIR)/cpu/m65c02/M65C02_AddrGen.v \
-	$(RTL_DIR)/cpu/m65c02/M65C02_ALU.v \
-	$(RTL_DIR)/cpu/m65c02/M65C02_BIN.v \
-	$(RTL_DIR)/cpu/m65c02/M65C02_BCD.v \
+	$(RTL_DIR)/cpu/arlet-6502/cpu.v \
+	$(RTL_DIR)/cpu/arlet-6502/ALU.v \
+	$(RTL_DIR)/system/clock_divider.v \
 	$(RTL_DIR)/system/reset_controller.v \
 	$(RTL_DIR)/memory/ram.v \
 	$(RTL_DIR)/memory/rom_basic.v \
@@ -33,11 +30,6 @@ RTL_SOURCES = \
 	$(RTL_DIR)/peripherals/uart/uart_tx.v \
 	$(RTL_DIR)/peripherals/uart/uart_rx.v \
 	$(RTL_DIR)/system/$(TOP).v
-
-# Arlet 6502 core (commented out - replaced by M65C02)
-#	$(RTL_DIR)/cpu/arlet-6502/cpu.v \
-#	$(RTL_DIR)/cpu/arlet-6502/ALU.v \
-#	$(RTL_DIR)/system/clock_divider.v \
 
 # Firmware hex files (must be built first)
 FIRMWARE_MONITOR = ../firmware/monitor/monitor.hex
@@ -58,7 +50,6 @@ OPENFPGALOADER = openFPGALoader
 
 # Yosys synthesis flags
 YOSYS_FLAGS = -q -l $(SYNTH_DIR)/yosys.log
-YOSYS_INCLUDE = -I$(RTL_DIR)/cpu/m65c02
 
 # nextpnr flags
 NEXTPNR_FLAGS = \
@@ -118,7 +109,7 @@ check-firmware:
 synth: dirs
 	@echo "Running Yosys synthesis..."
 	$(YOSYS) $(YOSYS_FLAGS) -p \
-		"read_verilog -sv $(YOSYS_INCLUDE) $(RTL_SOURCES); \
+		"read_verilog -sv $(RTL_SOURCES); \
 		 hierarchy -check -top $(TOP); \
 		 synth_ecp5 -noabc9 -top $(TOP) -json $(JSON)" \
 		2>&1 | tee $(SYNTH_DIR)/yosys.log

@@ -5,11 +5,11 @@ An educational 6502-based microcomputer system implemented on FPGA using open-so
 ## Overview
 
 RetroCPU is a complete retro computing system featuring:
-- **6502 CPU** running at 1 MHz (Arlet Ottens' Verilog core)
+- **M65C02 CPU** running at 25 MHz (6.25 MHz microcycle rate, ~5 MIPS)
 - **64 KB memory** (32 KB RAM + 24 KB ROM + 8 KB I/O space)
 - **Microsoft 6502 BASIC** in ROM
 - **Monitor program** for memory examination and debugging
-- **UART interface** for serial communication (9600 baud)
+- **UART interface** for serial communication (115200 baud)
 - **HD44780 LCD display** support (2x16 or 2x20 character LCD)
 - **PS/2 keyboard** interface
 
@@ -64,7 +64,7 @@ screen /dev/ttyUSB0 9600
 ```
 retrocpu/
 ├── rtl/                    # Verilog HDL source files
-│   ├── cpu/               # 6502 CPU core (Arlet submodule)
+│   ├── cpu/               # M65C02 CPU core
 │   ├── memory/            # RAM, ROM, address decoder
 │   ├── peripherals/       # UART, LCD, PS/2 modules
 │   └── system/            # Top-level integration, clock/reset
@@ -196,7 +196,7 @@ See [.specify/memory/constitution.md](.specify/memory/constitution.md) for compl
 
 ### 6502 Resources
 - **6502.org**: http://www.6502.org/ (CPU reference)
-- **Arlet 6502 Core**: https://github.com/Arlet/verilog-6502
+- **M65C02 Core**: https://github.com/MorrisMA/MAM65C02-Processor-Core (current CPU)
 - **EhBASIC**: https://github.com/Klaus2m5/6502_EhBASIC_V2.22
 
 ### FPGA Tools
@@ -212,7 +212,7 @@ See [.specify/memory/constitution.md](.specify/memory/constitution.md) for compl
 ## License
 
 This project is for educational purposes. Component licenses:
-- **Arlet 6502 core**: BSD-style license
+- **M65C02 CPU core**: LGPL v3 (MAM65C02-Processor-Core)
 - **EhBASIC**: Lee Davison, free to use
 - **Project code**: To be determined (suggest MIT or Apache 2.0)
 
@@ -228,10 +228,13 @@ See [specs/001-6502-fpga-microcomputer/tasks.md](specs/001-6502-fpga-microcomput
 
 ## Status
 
-**Current Phase**: Initial setup and infrastructure
-**Next Milestone**: User Story 1 (Monitor MVP)
+**Current Version**: v0.2.0 - M65C02 Port Complete ✅
+**System**: Fully operational with M65C02 CPU core
+**Zero Page Bug**: Fixed (was broken with Arlet 6502)
+**Performance**: 6x improvement (1 MHz → 6.25 MHz effective)
+**Next Milestone**: Firmware enhancement (monitor commands, full BASIC)
 
-See task list for detailed progress tracking.
+See [specs/002-m65c02-port/](specs/002-m65c02-port/) for M65C02 integration details and task list.
 
 ## Contact
 

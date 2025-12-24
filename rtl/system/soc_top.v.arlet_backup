@@ -1,0 +1,243 @@
+//
+// soc_top.v - Top-Level System-on-Chip Integration
+//
+// Integrates all system components for 6502 microcomputer
+//
+// Author: RetroCPU Project
+// License: MIT
+//
+// Components:
+// - Arlet 6502 CPU core
+// - 32KB RAM ($0000-$7FFF)
+// - 16KB BASIC ROM ($8000-$BFFF)
+// - 8KB Monitor ROM ($E000-$FFFF)
+// - UART at $C000-$C0FF
+// - Clock divider (25 MHz → 1 MHz)
+// - Reset controller
+//
+
+module soc_top (
+    // Clock and reset
+    input  wire clk_25mhz,         // P3: 25 MHz system clock
+    input  wire reset_button_n,    // T1: Reset button (active-low, FIRE 2)
+
+    // UART
+    output wire uart_tx,           // J17: UART TX to USB bridge
+    input  wire uart_rx,           // K17: UART RX from USB bridge
+
+    // Debug LEDs
+    output wire [3:0] led          // Status LEDs
+);
+
+    // ========================================================================
+    // Reset and Clock Generation
+    // ========================================================================
+
+    wire system_rst;
+    wire cpu_clk_enable;
+    reg cpu_clk_enable_delayed;  // Delayed by one cycle for data latching
+
+    reset_controller rst_ctrl (
+        .clk(clk_25mhz),
+        .reset_button_n(reset_button_n),
+        .rst(system_rst)
+    );
+
+    clock_divider #(
+        .DIVIDE_RATIO(25)  // 25 MHz / 25 = 1 MHz CPU clock
+    ) clk_div (
+        .clk(clk_25mhz),
+        .rst(system_rst),
+        .clk_enable(cpu_clk_enable)
+    );
+
+    // NOT USED - kept for potential future use
+    // Delay cpu_clk_enable by one cycle
+    always @(posedge clk_25mhz) begin
+        if (system_rst)
+            cpu_clk_enable_delayed <= 0;
+        else
+            cpu_clk_enable_delayed <= cpu_clk_enable;
+    end
+
+    // ========================================================================
+    // CPU Interface Signals
+    // ========================================================================
+
+    wire [15:0] cpu_addr;
+    wire [7:0] cpu_data_out;
+    wire [7:0] cpu_data_in;
+    wire cpu_we;           // WE from CPU: 1 = write, 0 = read
+    wire cpu_sync;
+    wire cpu_irq_n = 1'b1; // No interrupts in MVP
+    wire cpu_nmi_n = 1'b1; // No NMI in MVP
+    wire cpu_rdy = 1'b1;   // Always ready (no wait states)
+
+    // ========================================================================
+    // Address Decoder
+    // ========================================================================
+
+    wire ram_cs;
+    wire rom_basic_cs;
+    wire rom_monitor_cs;
+    wire io_cs;
+    wire uart_cs;
+    wire lcd_cs;
+    wire ps2_cs;
+
+    address_decoder addr_dec (
+        .addr(cpu_addr),
+        .ram_cs(ram_cs),
+        .rom_basic_cs(rom_basic_cs),
+        .rom_monitor_cs(rom_monitor_cs),
+        .io_cs(io_cs),
+        .uart_cs(uart_cs),
+        .lcd_cs(lcd_cs),
+        .ps2_cs(ps2_cs)
+    );
+
+    // ========================================================================
+    // Memory Modules
+    // ========================================================================
+
+    wire [7:0] ram_data_out;
+
+    // Use direct connection - CPU RDY pin ensures stable address/data
+    ram #(
+        .ADDR_WIDTH(15),  // 32KB
+        .DATA_WIDTH(8)
+    ) main_ram (
+        .clk(clk_25mhz),
+        .rst(system_rst),
+        .we(ram_cs && cpu_we),  // Write whenever CPU wants to write to RAM
+        .addr(cpu_addr[14:0]),
+        .data_in(cpu_data_out),
+        .data_out(ram_data_out)
+    );
+
+    wire [7:0] rom_basic_data_out;
+
+    rom_basic #(
+        .ADDR_WIDTH(14),  // 16KB
+        .DATA_WIDTH(8),
+        .HEX_FILE("../firmware/basic/basic_rom.hex")
+    ) basic_rom (
+        .clk(clk_25mhz),
+        .addr(cpu_addr[13:0]),
+        .data_out(rom_basic_data_out)
+    );
+
+    wire [7:0] rom_monitor_data_out;
+
+    rom_monitor #(
+        .ADDR_WIDTH(13),  // 8KB
+        .DATA_WIDTH(8),
+        .HEX_FILE("../firmware/monitor/monitor.hex")
+    ) monitor_rom (
+        .clk(clk_25mhz),
+        .addr(cpu_addr[12:0]),
+        .data_out(rom_monitor_data_out)
+    );
+
+    // ========================================================================
+    // UART
+    // ========================================================================
+
+    wire [7:0] uart_data_out;
+    wire uart_rx_ready_debug;
+
+    uart #(
+        .CLK_FREQ(25000000),
+        .BAUD_RATE(115200),
+        .HOLDOFF_CYCLES(2500)  // ~100us @ 25MHz (1.2 char times @ 115200 baud)
+    ) uart_inst (
+        .clk(clk_25mhz),
+        .rst(system_rst),
+        .cs(uart_cs),
+        .we(uart_cs && cpu_we),  // Write whenever CPU wants to write to UART
+        .addr(cpu_addr[7:0]),
+        .data_in(cpu_data_out),
+        .data_out(uart_data_out),
+        .tx(uart_tx),
+        .rx(uart_rx),  // Connected to UART RX pin
+        .rx_ready_debug(uart_rx_ready_debug)
+    );
+
+    // ========================================================================
+    // Data Bus Multiplexer (Registered)
+    // ========================================================================
+    // Register the data bus to break combinational loops.
+    // CRITICAL: Only update when CPU is actually reading (cpu_clk_enable high)
+
+    reg [7:0] cpu_data_in_mux;
+    reg [7:0] cpu_data_in_reg;
+
+    always @(*) begin
+        case (1'b1)
+            ram_cs:         cpu_data_in_mux = ram_data_out;
+            rom_basic_cs:   cpu_data_in_mux = rom_basic_data_out;
+            rom_monitor_cs: cpu_data_in_mux = rom_monitor_data_out;
+            uart_cs:        cpu_data_in_mux = uart_data_out;
+            default:        cpu_data_in_mux = 8'hFF;  // Unmapped reads return $FF
+        endcase
+    end
+
+    // Register data input when CPU clock enable is high
+    always @(posedge clk_25mhz) begin
+        if (system_rst) begin
+            cpu_data_in_reg <= 8'hEA;  // NOP during reset
+        end else if (cpu_clk_enable) begin
+            cpu_data_in_reg <= cpu_data_in_mux;
+        end
+    end
+
+    assign cpu_data_in = cpu_data_in_reg;
+
+    // ========================================================================
+    // CPU Instance
+    // ========================================================================
+
+    cpu cpu_inst (
+        .clk(clk_25mhz),
+        .reset(system_rst),
+        .AB(cpu_addr),
+        .DI(cpu_data_in),
+        .DO(cpu_data_out),
+        .WE(cpu_we),  // 1=write, 0=read
+        .IRQ(cpu_irq_n),
+        .NMI(cpu_nmi_n),
+        .RDY(cpu_rdy && cpu_clk_enable)  // Keep DI from being updated during writes
+    );
+
+    // ========================================================================
+    // Debug LEDs
+    // ========================================================================
+
+    // LED indicators for debugging
+    // Debug: Capture write attempts to address $0010
+    reg [7:0] debug_addr_low;
+    reg debug_write_seen;
+    reg [7:0] debug_data_written;
+    reg [7:0] debug_data_read;
+
+    always @(posedge clk_25mhz) begin
+        if (system_rst) begin
+            debug_addr_low <= 8'h00;
+            debug_write_seen <= 1'b0;
+            debug_data_written <= 8'h00;
+            debug_data_read <= 8'h00;
+        end else if (cpu_addr == 16'h0010 && ram_cs && cpu_we) begin
+            debug_addr_low <= cpu_addr[7:0];
+            debug_write_seen <= 1'b1;
+            debug_data_written <= cpu_data_out;
+        end else if (cpu_addr == 16'h0010 && ram_cs && !cpu_we) begin
+            debug_data_read <= cpu_data_in_mux;
+        end
+    end
+
+    assign led[0] = debug_write_seen;         // Saw write to $0010
+    assign led[1] = (debug_data_written != 8'h00);  // Data written was non-zero
+    assign led[2] = (debug_data_read == debug_data_written);  // Read matches write
+    assign led[3] = cpu_we;                    // Current CPU write enable
+
+endmodule
