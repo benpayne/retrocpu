@@ -59,16 +59,80 @@ MAIN_LOOP:
     LDA #' '
     JSR CHROUT
 
-    ; Read command (for now, just loop - no input yet)
-    ; In MVP we'll just demonstrate output
+    ; Wait for input character
+    JSR CHRIN          ; Read character into A
+    STA TEMP           ; Save command character
 
-    ; Print demo message
+    ; Echo the character back
+    JSR CHROUT
+
+    ; Print newline
+    LDA #$0D
+    JSR CHROUT
+    LDA #$0A
+    JSR CHROUT
+
+    ; Parse command
+    LDA TEMP           ; Restore command character
+    CMP #'E'           ; Examine command
+    BEQ CMD_EXAMINE
+    CMP #'e'
+    BEQ CMD_EXAMINE
+
+    CMP #'D'           ; Deposit command
+    BEQ CMD_DEPOSIT
+    CMP #'d'
+    BEQ CMD_DEPOSIT
+
+    CMP #'H'           ; Help command
+    BEQ CMD_HELP
+    CMP #'h'
+    BEQ CMD_HELP
+
+    ; Unknown command
     LDX #0
-:   LDA DEMO_MSG,X
-    BEQ MAIN_LOOP      ; Loop forever
+@UNKNOWN_LOOP:
+    LDA UNKNOWN_MSG,X
+    BEQ MAIN_LOOP
     JSR CHROUT
     INX
-    BNE :-
+    BNE @UNKNOWN_LOOP
+
+; ============================================================================
+; CMD_EXAMINE - Examine memory at address
+; ============================================================================
+CMD_EXAMINE:
+    LDX #0
+@E_LOOP:
+    LDA EXAMINE_MSG,X
+    BEQ MAIN_LOOP
+    JSR CHROUT
+    INX
+    BNE @E_LOOP
+
+; ============================================================================
+; CMD_DEPOSIT - Deposit value to memory
+; ============================================================================
+CMD_DEPOSIT:
+    LDX #0
+@D_LOOP:
+    LDA DEPOSIT_MSG,X
+    BEQ MAIN_LOOP
+    JSR CHROUT
+    INX
+    BNE @D_LOOP
+
+; ============================================================================
+; CMD_HELP - Display help
+; ============================================================================
+CMD_HELP:
+    LDX #0
+@H_LOOP:
+    LDA HELP_MSG,X
+    BEQ MAIN_LOOP
+    JSR CHROUT
+    INX
+    BNE @H_LOOP
 
 ; ============================================================================
 ; CHROUT - Output character to UART
@@ -86,6 +150,21 @@ CHROUT:
 
     PLA                ; Restore A
     STA UART_DATA      ; Send character
+    RTS
+
+; ============================================================================
+; CHRIN - Input character from UART
+; Output: A = character received
+; Preserves: X, Y
+; ============================================================================
+
+CHRIN:
+@WAIT_RX:
+    LDA UART_STATUS    ; Check RX ready
+    AND #$02           ; Bit 1 = RX ready
+    BEQ @WAIT_RX       ; Wait if no data available
+
+    LDA UART_DATA      ; Read character (clears RX ready flag)
     RTS
 
 ; ============================================================================
@@ -180,6 +259,27 @@ WELCOME_MSG:
 DEMO_MSG:
     .byte $0D, $0A
     .byte "Monitor ready! (Input not yet implemented)", $0D, $0A
+    .byte 0
+
+UNKNOWN_MSG:
+    .byte "Unknown command", $0D, $0A
+    .byte 0
+
+EXAMINE_MSG:
+    .byte "E command not yet implemented", $0D, $0A
+    .byte 0
+
+DEPOSIT_MSG:
+    .byte "D command not yet implemented", $0D, $0A
+    .byte 0
+
+HELP_MSG:
+    .byte $0D, $0A
+    .byte "Available commands:", $0D, $0A
+    .byte "  E addr      - Examine memory", $0D, $0A
+    .byte "  D addr val  - Deposit value", $0D, $0A
+    .byte "  H           - Help", $0D, $0A
+    .byte $0D, $0A
     .byte 0
 
 ; ============================================================================
