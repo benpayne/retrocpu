@@ -158,23 +158,20 @@ module soc_top (
     // ========================================================================
 
     wire [7:0] uart_data_out;
-    wire uart_rx_ready_debug;
 
     uart #(
         .CLK_FREQ(25000000),
-        .BAUD_RATE(115200),
-        .HOLDOFF_CYCLES(2500)  // ~100us @ 25MHz (1.2 char times @ 115200 baud)
+        .BAUD_RATE(9600)
     ) uart_inst (
         .clk(clk_25mhz),
         .rst(system_rst),
         .cs(uart_cs),
-        .we(uart_cs && mem_we),  // Write when CPU executes write operation at MC=3
+        .we(uart_cs && mem_we),  // Write when CPU executes write operation at MC=7
         .addr(cpu_addr[7:0]),
         .data_in(cpu_data_out),
         .data_out(uart_data_out),
         .tx(uart_tx),
-        .rx(uart_rx),  // Connected to UART RX pin
-        .rx_ready_debug(uart_rx_ready_debug)
+        .rx(uart_rx)  // Connected to UART RX pin
     );
 
     // ========================================================================
