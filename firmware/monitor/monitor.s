@@ -2,7 +2,8 @@
 ; RetroCPU Monitor Program
 ; 6502 Assembly Language
 ;
-; Simple monitor with commands: E (examine), D (deposit), J (jump), G (go)
+; Simple monitor with commands: E (examine), D (deposit), H (help), G (go)
+; Uses inline argument format: "E 0200" or "D 0200 42"
 ; Outputs via UART at $C000
 ; ============================================================================
 
@@ -12,11 +13,12 @@
 ; Memory Map
 ; ============================================================================
 
-UART_DATA   = $C000  ; UART data register (write to transmit)
-UART_STATUS = $C001  ; UART status (bit 0 = TX ready)
+UART_DATA   = $C000  ; UART data register (R/W)
+UART_STATUS = $C001  ; UART status (bit 0 = TX ready, bit 1 = RX ready)
 
 ; Zero page variables
 TEMP        = $00    ; Temporary storage
+TEMP2       = $01    ; Temporary storage 2
 ADDR_LO     = $02    ; 16-bit address low byte
 ADDR_HI     = $03    ; 16-bit address high byte
 VALUE       = $04    ; Byte value
@@ -75,52 +77,184 @@ MAIN_LOOP:
     ; Parse command
     LDA TEMP           ; Restore command character
     CMP #'E'           ; Examine command
-    BEQ CMD_EXAMINE
+    BNE @TRY_E_LOWER
+    JMP CMD_EXAMINE
+@TRY_E_LOWER:
     CMP #'e'
-    BEQ CMD_EXAMINE
+    BNE @TRY_D
+    JMP CMD_EXAMINE
 
+@TRY_D:
     CMP #'D'           ; Deposit command
-    BEQ CMD_DEPOSIT
+    BNE @TRY_D_LOWER
+    JMP CMD_DEPOSIT
+@TRY_D_LOWER:
     CMP #'d'
-    BEQ CMD_DEPOSIT
+    BNE @TRY_G
+    JMP CMD_DEPOSIT
 
+@TRY_G:
+    CMP #'G'           ; Go to BASIC
+    BNE @TRY_G_LOWER
+    JMP CMD_GO
+@TRY_G_LOWER:
+    CMP #'g'
+    BNE @TRY_H
+    JMP CMD_GO
+
+@TRY_H:
     CMP #'H'           ; Help command
-    BEQ CMD_HELP
+    BNE @TRY_H_LOWER
+    JMP CMD_HELP
+@TRY_H_LOWER:
     CMP #'h'
-    BEQ CMD_HELP
+    BNE @UNKNOWN
+    JMP CMD_HELP
 
     ; Unknown command
+@UNKNOWN:
     LDX #0
 @UNKNOWN_LOOP:
     LDA UNKNOWN_MSG,X
-    BEQ MAIN_LOOP
+    BEQ @BACK_TO_MAIN
     JSR CHROUT
     INX
     BNE @UNKNOWN_LOOP
+@BACK_TO_MAIN:
+    JMP MAIN_LOOP
 
 ; ============================================================================
 ; CMD_EXAMINE - Examine memory at address
+; Format: E 0200 (inline - reads hex from UART after command)
 ; ============================================================================
 CMD_EXAMINE:
+    ; Skip spaces
+    JSR SKIP_SPACES
+
+    ; Read 4-digit hex address
+    JSR READ_HEX_WORD
+    BCS @ERROR         ; Carry set = error
+
+    ; Read byte from memory
+    LDY #0
+    LDA (ADDR_LO),Y
+    STA VALUE
+
+    ; Print address in hex (4 digits)
+    LDA ADDR_HI
+    JSR PRINT_HEX
+    LDA ADDR_LO
+    JSR PRINT_HEX
+
+    ; Print ": "
+    LDA #':'
+    JSR CHROUT
+    LDA #' '
+    JSR CHROUT
+
+    ; Print value in hex (2 digits)
+    LDA VALUE
+    JSR PRINT_HEX
+
+    ; Print newline
+    LDA #$0D
+    JSR CHROUT
+    LDA #$0A
+    JSR CHROUT
+
+    JMP MAIN_LOOP
+
+@ERROR:
     LDX #0
-@E_LOOP:
-    LDA EXAMINE_MSG,X
-    BEQ MAIN_LOOP
+@ERR_LOOP:
+    LDA ERROR_MSG,X
+    BEQ @DONE_ERR
     JSR CHROUT
     INX
-    BNE @E_LOOP
+    BNE @ERR_LOOP
+@DONE_ERR:
+    JMP MAIN_LOOP
 
 ; ============================================================================
 ; CMD_DEPOSIT - Deposit value to memory
+; Format: D 0200 42 (inline - reads hex from UART after command)
 ; ============================================================================
 CMD_DEPOSIT:
+    ; Skip spaces
+    JSR SKIP_SPACES
+
+    ; Read 4-digit hex address
+    JSR READ_HEX_WORD
+    BCS @ERROR         ; Carry set = error
+
+    ; Skip spaces before value
+    JSR SKIP_SPACES
+
+    ; Read 2-digit hex value
+    JSR READ_HEX_BYTE
+    BCS @ERROR         ; Carry set = error
+
+    ; Store value to memory
+    STA VALUE
+    LDY #0
+    STA (ADDR_LO),Y
+
+    ; Read back and verify (for display)
+    LDA (ADDR_LO),Y
+
+    ; Print address in hex
+    LDA ADDR_HI
+    JSR PRINT_HEX
+    LDA ADDR_LO
+    JSR PRINT_HEX
+
+    ; Print ": "
+    LDA #':'
+    JSR CHROUT
+    LDA #' '
+    JSR CHROUT
+
+    ; Print value in hex
+    LDA VALUE
+    JSR PRINT_HEX
+
+    ; Print newline
+    LDA #$0D
+    JSR CHROUT
+    LDA #$0A
+    JSR CHROUT
+
+    JMP MAIN_LOOP
+
+@ERROR:
     LDX #0
-@D_LOOP:
-    LDA DEPOSIT_MSG,X
-    BEQ MAIN_LOOP
+@ERR_LOOP:
+    LDA ERROR_MSG,X
+    BEQ @DONE_ERR
     JSR CHROUT
     INX
-    BNE @D_LOOP
+    BNE @ERR_LOOP
+@DONE_ERR:
+    JMP MAIN_LOOP
+
+; ============================================================================
+; CMD_GO - Jump to BASIC entry point
+; Format: G
+; Jumps to OSI BASIC ROM start at $8000
+; NEVER RETURNS - BASIC takes over
+; ============================================================================
+CMD_GO:
+    ; Print message
+    LDX #0
+@MSG_LOOP:
+    LDA GO_MSG,X
+    BEQ @JUMP
+    JSR CHROUT
+    INX
+    BNE @MSG_LOOP
+
+@JUMP:
+    JMP $8000          ; OSI BASIC ROM start (cold start entry point)
 
 ; ============================================================================
 ; CMD_HELP - Display help
@@ -129,10 +263,154 @@ CMD_HELP:
     LDX #0
 @H_LOOP:
     LDA HELP_MSG,X
-    BEQ MAIN_LOOP
+    BEQ @DONE_HELP
     JSR CHROUT
     INX
     BNE @H_LOOP
+@DONE_HELP:
+    JMP MAIN_LOOP
+
+; ============================================================================
+; SKIP_SPACES - Skip whitespace characters
+; Reads characters from UART until non-space found
+; Output: TEMP = first non-space character
+; ============================================================================
+SKIP_SPACES:
+@LOOP:
+    JSR CHRIN
+    CMP #' '
+    BEQ @LOOP
+    CMP #$09           ; Tab
+    BEQ @LOOP
+    ; Non-space found, put it in TEMP for next function
+    STA TEMP
+    RTS
+
+; ============================================================================
+; READ_HEX_NIBBLE - Read one hex character and convert to nibble
+; Input: A = ASCII hex character ('0'-'9', 'A'-'F', 'a'-'f')
+; Output: A = nibble value (0-15), Carry clear if valid
+;         Carry set if invalid character
+; ============================================================================
+READ_HEX_NIBBLE:
+    ; Check for '0'-'9'
+    CMP #'0'
+    BCC @INVALID       ; Less than '0'
+    CMP #'9'+1
+    BCC @DIGIT         ; '0'-'9'
+
+    ; Check for 'A'-'F'
+    CMP #'A'
+    BCC @INVALID
+    CMP #'F'+1
+    BCC @UPPER_HEX
+
+    ; Check for 'a'-'f'
+    CMP #'a'
+    BCC @INVALID
+    CMP #'f'+1
+    BCS @INVALID
+
+    ; Convert 'a'-'f' to 10-15
+    SEC
+    SBC #'a'-10
+    CLC                ; Success
+    RTS
+
+@UPPER_HEX:
+    ; Convert 'A'-'F' to 10-15
+    SEC
+    SBC #'A'-10
+    CLC                ; Success
+    RTS
+
+@DIGIT:
+    ; Convert '0'-'9' to 0-9
+    SEC
+    SBC #'0'
+    CLC                ; Success
+    RTS
+
+@INVALID:
+    SEC                ; Error
+    RTS
+
+; ============================================================================
+; READ_HEX_BYTE - Read two hex characters and convert to byte
+; Output: A = byte value, Carry clear if valid
+;         Carry set if invalid
+; Uses: TEMP, TEMP2
+; ============================================================================
+READ_HEX_BYTE:
+    ; Read first nibble (high)
+    LDA TEMP           ; Get character from SKIP_SPACES or previous read
+    JSR READ_HEX_NIBBLE
+    BCS @ERROR
+    ASL A              ; Shift to high nibble
+    ASL A
+    ASL A
+    ASL A
+    STA TEMP2          ; Save high nibble
+
+    ; Read second nibble (low)
+    JSR CHRIN
+    JSR READ_HEX_NIBBLE
+    BCS @ERROR
+
+    ; Combine nibbles
+    ORA TEMP2          ; OR with high nibble
+    CLC                ; Success
+    RTS
+
+@ERROR:
+    SEC                ; Error
+    RTS
+
+; ============================================================================
+; READ_HEX_WORD - Read four hex characters and convert to 16-bit word
+; Output: ADDR_HI:ADDR_LO = word value, Carry clear if valid
+;         Carry set if invalid
+; Uses: TEMP, TEMP2, VALUE
+; ============================================================================
+READ_HEX_WORD:
+    ; Read high byte (first 2 hex digits)
+    LDA TEMP           ; Get first character
+    JSR READ_HEX_NIBBLE
+    BCS @ERROR
+    ASL A
+    ASL A
+    ASL A
+    ASL A
+    STA TEMP2
+
+    JSR CHRIN
+    JSR READ_HEX_NIBBLE
+    BCS @ERROR
+    ORA TEMP2
+    STA ADDR_HI        ; Store high byte
+
+    ; Read low byte (next 2 hex digits)
+    JSR CHRIN
+    JSR READ_HEX_NIBBLE
+    BCS @ERROR
+    ASL A
+    ASL A
+    ASL A
+    ASL A
+    STA TEMP2
+
+    JSR CHRIN
+    JSR READ_HEX_NIBBLE
+    BCS @ERROR
+    ORA TEMP2
+    STA ADDR_LO        ; Store low byte
+
+    CLC                ; Success
+    RTS
+
+@ERROR:
+    SEC                ; Error
+    RTS
 
 ; ============================================================================
 ; CHROUT - Output character to UART
@@ -165,26 +443,6 @@ CHRIN:
     BEQ @WAIT_RX       ; Wait if no data available
 
     LDA UART_DATA      ; Read character (clears RX ready flag)
-    RTS
-
-; ============================================================================
-; PRINT_STR - Print null-terminated string
-; Input: X = string address low, Y = string address high
-; ============================================================================
-
-PRINT_STR:
-    STX ADDR_LO
-    STY ADDR_HI
-    LDY #0
-
-@LOOP:
-    LDA (ADDR_LO),Y
-    BEQ @DONE
-    JSR CHROUT
-    INY
-    BNE @LOOP
-
-@DONE:
     RTS
 
 ; ============================================================================
@@ -243,42 +501,42 @@ PRINT_NIBBLE:
 
 WELCOME_MSG:
     .byte $0D, $0A                    ; CR LF
-    .byte "RetroCPU Monitor v1.0", $0D, $0A
+    .byte "RetroCPU Monitor v1.1", $0D, $0A
     .byte $0D, $0A
     .byte "6502 FPGA Microcomputer", $0D, $0A
     .byte "(c) 2025 - Educational Project", $0D, $0A
     .byte $0D, $0A
     .byte "Commands:", $0D, $0A
-    .byte "  E addr      - Examine memory", $0D, $0A
-    .byte "  D addr val  - Deposit value", $0D, $0A
-    .byte "  J addr      - Jump to address", $0D, $0A
-    .byte "  G           - Go to BASIC", $0D, $0A
+    .byte "  E <addr>      - Examine memory", $0D, $0A
+    .byte "  D <addr> <val> - Deposit value", $0D, $0A
+    .byte "  G             - Go to BASIC", $0D, $0A
+    .byte "  H             - Help", $0D, $0A
     .byte $0D, $0A
-    .byte 0
-
-DEMO_MSG:
-    .byte $0D, $0A
-    .byte "Monitor ready! (Input not yet implemented)", $0D, $0A
     .byte 0
 
 UNKNOWN_MSG:
     .byte "Unknown command", $0D, $0A
     .byte 0
 
-EXAMINE_MSG:
-    .byte "E command not yet implemented", $0D, $0A
+ERROR_MSG:
+    .byte "Syntax error", $0D, $0A
     .byte 0
 
-DEPOSIT_MSG:
-    .byte "D command not yet implemented", $0D, $0A
+GO_MSG:
+    .byte "Starting BASIC...", $0D, $0A
     .byte 0
 
 HELP_MSG:
     .byte $0D, $0A
-    .byte "Available commands:", $0D, $0A
-    .byte "  E addr      - Examine memory", $0D, $0A
-    .byte "  D addr val  - Deposit value", $0D, $0A
-    .byte "  H           - Help", $0D, $0A
+    .byte "RetroCPU Monitor Commands:", $0D, $0A
+    .byte "  E <addr>        - Examine memory (hex address)", $0D, $0A
+    .byte "  D <addr> <val>  - Deposit value to memory", $0D, $0A
+    .byte "  G               - Go to BASIC interpreter", $0D, $0A
+    .byte "  H               - Display this help", $0D, $0A
+    .byte $0D, $0A
+    .byte "Examples:", $0D, $0A
+    .byte "  E 0200          - Read byte at $0200", $0D, $0A
+    .byte "  D 0200 42       - Write $42 to $0200", $0D, $0A
     .byte $0D, $0A
     .byte 0
 
