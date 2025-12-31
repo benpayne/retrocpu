@@ -16,6 +16,10 @@
 UART_DATA   = $C000  ; UART data register (R/W)
 UART_STATUS = $C001  ; UART status (bit 0 = TX ready, bit 1 = RX ready)
 
+LCD_DATA    = $C100  ; LCD data register (write ASCII character)
+LCD_CMD     = $C101  ; LCD command register (write HD44780 command)
+LCD_STATUS  = $C102  ; LCD status register (bit 0 = busy flag)
+
 ; Zero page variables
 TEMP        = $00    ; Temporary storage
 TEMP2       = $01    ; Temporary storage 2
@@ -47,6 +51,10 @@ RESET:
 
     ; Print welcome message
     JSR PRINT_WELCOME
+
+    ; Initialize LCD and display boot message
+    JSR LCD_INIT
+    JSR LCD_BOOT_MSG
 
     ; Fall through to main loop
 
@@ -463,6 +471,93 @@ PRINT_WELCOME:
     RTS
 
 ; ============================================================================
+; LCD_INIT - Initialize HD44780 LCD in 4-bit mode
+; Uses: A, X
+; ============================================================================
+
+LCD_INIT:
+    ; Wait 50ms for LCD power-up (approximate delay loop)
+    LDX #$FF
+@DELAY1:
+    DEX
+    BNE @DELAY1
+    LDX #$FF
+@DELAY2:
+    DEX
+    BNE @DELAY2
+
+    ; Clear display (0x01)
+    LDA #$01
+    STA LCD_CMD
+    JSR LCD_DELAY
+
+    ; Display on, cursor off (0x0C)
+    LDA #$0C
+    STA LCD_CMD
+    JSR LCD_DELAY
+
+    ; Entry mode: increment, no shift (0x06)
+    LDA #$06
+    STA LCD_CMD
+    JSR LCD_DELAY
+
+    RTS
+
+; ============================================================================
+; LCD_DELAY - Delay for LCD command to complete
+; Uses: X
+; ============================================================================
+
+LCD_DELAY:
+    LDX #$FF
+@LOOP:
+    DEX
+    BNE @LOOP
+    RTS
+
+; ============================================================================
+; LCD_BOOT_MSG - Display boot message on LCD
+; Uses: A, X
+; ============================================================================
+
+LCD_BOOT_MSG:
+    ; Set cursor to home position (0x80)
+    LDA #$80
+    STA LCD_CMD
+    JSR LCD_DELAY
+
+    ; Print "RetroCPU 6502" on line 1
+    LDX #0
+@LINE1:
+    LDA LCD_MSG_LINE1,X
+    BEQ @LINE2_START
+    STA LCD_DATA
+    JSR LCD_DELAY
+    INX
+    CPX #16            ; Limit to 16 chars
+    BNE @LINE1
+
+@LINE2_START:
+    ; Set cursor to line 2, column 0 (0xC0)
+    LDA #$C0
+    STA LCD_CMD
+    JSR LCD_DELAY
+
+    ; Print "Monitor v1.0" on line 2
+    LDX #0
+@LINE2:
+    LDA LCD_MSG_LINE2,X
+    BEQ @DONE
+    STA LCD_DATA
+    JSR LCD_DELAY
+    INX
+    CPX #16            ; Limit to 16 chars
+    BNE @LINE2
+
+@DONE:
+    RTS
+
+; ============================================================================
 ; PRINT_HEX - Print byte in hex
 ; Input: A = byte to print
 ; ============================================================================
@@ -514,6 +609,12 @@ WELCOME_MSG:
     .byte "  H             - Help", $0D, $0A
     .byte $0D, $0A
     .byte 0
+
+LCD_MSG_LINE1:
+    .byte "RetroCPU 6502   ", 0  ; 16 chars + null terminator
+
+LCD_MSG_LINE2:
+    .byte "Monitor v1.1    ", 0  ; 16 chars + null terminator
 
 UNKNOWN_MSG:
     .byte "Unknown command", $0D, $0A
