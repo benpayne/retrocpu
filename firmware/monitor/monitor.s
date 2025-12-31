@@ -52,7 +52,10 @@ RESET:
     ; Print welcome message
     JSR PRINT_WELCOME
 
-    ; Display boot message on LCD (hardware init done automatically)
+    ; Initialize LCD explicitly (don't rely on hardware auto-init)
+    JSR LCD_INIT
+
+    ; Display boot message on LCD
     JSR LCD_BOOT_MSG
 
     ; Fall through to main loop
@@ -475,20 +478,17 @@ PRINT_WELCOME:
 ; ============================================================================
 
 LCD_INIT:
-    ; Wait 50ms for LCD power-up (approximate delay loop)
-    LDX #$FF
-@DELAY1:
-    DEX
-    BNE @DELAY1
-    LDX #$FF
-@DELAY2:
-    DEX
-    BNE @DELAY2
+    ; Wait for LCD power-up and hardware init to complete
+    ; Hardware init takes ~15-20ms, wait ~20ms total
+    JSR LCD_DELAY_LONG
+    JSR LCD_DELAY_LONG
+    JSR LCD_DELAY_LONG
+    JSR LCD_DELAY_LONG  ; 4 * 5ms = ~20ms
 
-    ; Clear display (0x01)
+    ; Clear display (0x01) - needs longer delay
     LDA #$01
     STA LCD_CMD
-    JSR LCD_DELAY
+    JSR LCD_DELAY_LONG  ; Clear needs ~2ms
 
     ; Display on, cursor off (0x0C)
     LDA #$0C
@@ -503,17 +503,38 @@ LCD_INIT:
     RTS
 
 ; ============================================================================
-; LCD_DELAY - Delay for LCD command to complete (~10-20ms)
+; LCD_DELAY_LONG - Long delay for LCD clear/init commands (~5ms)
+; Uses: X, Y
+; ============================================================================
+
+LCD_DELAY_LONG:
+    ; Nested delay loops for ~5ms at 25 MHz
+    ; Outer loop: 160 iterations
+    ; Inner loop: 255 iterations each
+    ; Total: ~160 * 255 * 3 cycles = ~122,400 cycles = ~4.9ms
+
+    LDY #160       ; Outer loop counter
+@OUTER:
+    LDX #$FF       ; Inner loop counter
+@INNER:
+    DEX
+    BNE @INNER
+    DEY
+    BNE @OUTER
+    RTS
+
+; ============================================================================
+; LCD_DELAY - Standard delay for LCD commands and characters (~1ms)
 ; Uses: X, Y
 ; ============================================================================
 
 LCD_DELAY:
-    ; Nested delay loops for ~10-20ms at 25 MHz
-    ; Outer loop: 255 iterations
+    ; Nested delay loops for ~1ms at 25 MHz
+    ; Outer loop: 32 iterations
     ; Inner loop: 255 iterations each
-    ; Total: ~255 * 255 * 3 cycles = ~195,000 cycles = ~8ms
+    ; Total: ~32 * 255 * 3 cycles = ~24,480 cycles = ~0.98ms
 
-    LDY #$FF       ; Outer loop counter
+    LDY #32        ; Outer loop counter
 @OUTER:
     LDX #$FF       ; Inner loop counter
 @INNER:
@@ -529,13 +550,6 @@ LCD_DELAY:
 ; ============================================================================
 
 LCD_BOOT_MSG:
-    ; Wait for hardware initialization to complete (~20ms)
-    ; Multiple delay loops to ensure init_done
-    JSR LCD_DELAY
-    JSR LCD_DELAY
-    JSR LCD_DELAY
-    JSR LCD_DELAY
-
     ; Set cursor to home position (0x80)
     LDA #$80
     STA LCD_CMD
@@ -546,11 +560,6 @@ LCD_BOOT_MSG:
 @LINE1:
     LDA LCD_MSG_LINE1,X
     BEQ @LINE2_START
-
-    ; Debug: Send to UART also
-    PHA                ; Save A
-    JSR CHROUT         ; Print to UART
-    PLA                ; Restore A
 
     STA LCD_DATA
 
@@ -565,12 +574,6 @@ LCD_BOOT_MSG:
     CPX #16            ; Limit to 16 chars
     BNE @LINE1
 
-    ; Debug: Print newline to UART
-    LDA #$0D
-    JSR CHROUT
-    LDA #$0A
-    JSR CHROUT
-
 @LINE2_START:
     ; Set cursor to line 2, column 0 (0xC0)
     LDA #$C0
@@ -582,11 +585,6 @@ LCD_BOOT_MSG:
 @LINE2:
     LDA LCD_MSG_LINE2,X
     BEQ @DONE
-
-    ; Debug: Send to UART also
-    PHA                ; Save A
-    JSR CHROUT         ; Print to UART
-    PLA                ; Restore A
 
     STA LCD_DATA
 
@@ -600,12 +598,6 @@ LCD_BOOT_MSG:
     INX
     CPX #16            ; Limit to 16 chars
     BNE @LINE2
-
-    ; Debug: Print newline to UART
-    LDA #$0D
-    JSR CHROUT
-    LDA #$0A
-    JSR CHROUT
 
 @DONE:
     RTS
