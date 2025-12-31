@@ -1,0 +1,35 @@
+# Cocotb test for full SoC with monitor firmware
+
+SIM ?= icarus
+TOPLEVEL_LANG ?= verilog
+
+# RTL source files - full system
+VERILOG_SOURCES += $(PWD)/../../rtl/cpu/arlet-6502/cpu.v
+VERILOG_SOURCES += $(PWD)/../../rtl/cpu/arlet-6502/ALU.v
+VERILOG_SOURCES += $(PWD)/../../rtl/system/clock_divider.v
+VERILOG_SOURCES += $(PWD)/../../rtl/system/reset_controller.v
+VERILOG_SOURCES += $(PWD)/../../rtl/memory/ram.v
+VERILOG_SOURCES += $(PWD)/../../rtl/memory/rom_basic.v
+VERILOG_SOURCES += $(PWD)/../../rtl/memory/rom_monitor.v
+VERILOG_SOURCES += $(PWD)/../../rtl/memory/address_decoder.v
+VERILOG_SOURCES += $(PWD)/../../rtl/peripherals/uart/uart.v
+VERILOG_SOURCES += $(PWD)/../../rtl/peripherals/uart/uart_tx.v
+VERILOG_SOURCES += $(PWD)/../../rtl/system/soc_top.v
+
+# Pass absolute paths to ROM hex files as parameters
+COMPILE_ARGS += -Psoc_top.rom_monitor_inst.HEX_FILE=\"$(PWD)/../../firmware/monitor/monitor.hex\"
+COMPILE_ARGS += -Psoc_top.rom_basic_inst.HEX_FILE=\"$(PWD)/../../firmware/basic/basic_rom.hex\"
+
+# Speed up simulation: use 100 KHz CPU clock instead of 1 KHz (100x faster)
+COMPILE_ARGS += -Psoc_top.clk_div.DIVIDE_RATIO=250
+
+# Disable UART holdoff for simulation (makes it much faster)
+COMPILE_ARGS += -Psoc_top.uart_inst.HOLDOFF_CYCLES=0
+
+# Test module
+MODULE = test_soc_monitor
+
+# Top-level module
+TOPLEVEL = soc_top
+
+include $(shell cocotb-config --makefiles)/Makefile.sim

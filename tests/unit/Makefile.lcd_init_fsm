@@ -1,0 +1,18 @@
+# Cocotb Makefile for LCD Init FSM Module Tests
+
+SIM ?= icarus
+TOPLEVEL_LANG ?= verilog
+
+# Use shortened delays for simulation
+COMPILE_ARGS += -PWAIT_POWER_ON=1000 -PWAIT_4_1MS=500 -PWAIT_100US=100 -PWAIT_40US=50
+
+VERILOG_SOURCES = ../../rtl/peripherals/lcd/lcd_init_fsm.v
+
+# Module to test
+TOPLEVEL = lcd_init_fsm
+
+# Python test module
+MODULE = test_lcd_init_fsm
+
+# Include cocotb makefiles
+include $(shell cocotb-config --makefiles)/Makefile.sim

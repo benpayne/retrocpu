@@ -1,0 +1,15 @@
+# Cocotb Makefile for LCD Timing Module Tests
+
+SIM ?= icarus
+TOPLEVEL_LANG ?= verilog
+
+VERILOG_SOURCES = ../../rtl/peripherals/lcd/lcd_timing.v
+
+# Module to test
+TOPLEVEL = lcd_timing
+
+# Python test module
+MODULE = test_lcd_timing
+
+# Include cocotb makefiles
+include $(shell cocotb-config --makefiles)/Makefile.sim

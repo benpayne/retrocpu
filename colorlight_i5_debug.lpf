@@ -1,0 +1,47 @@
+# Colorlight i5 Pin Constraints for CPU Debug
+# Board: https://github.com/wuxx/Colorlight-FPGA-Projects
+
+## Clock (25 MHz) #####################################
+LOCATE COMP "clk_25mhz" SITE "P3";
+IOBUF PORT "clk_25mhz" PULLMODE=NONE IO_TYPE=LVCMOS33;
+FREQUENCY PORT "clk_25mhz" 25 MHZ;
+
+## RESET Button #######################################
+LOCATE COMP "reset_button_n" SITE "T1"; # FIRE 2 button (active-low)
+IOBUF PORT "reset_button_n" PULLMODE=UP IO_TYPE=LVCMOS33;
+
+## UART (Integrated USB-Serial on carrier board) #######
+LOCATE COMP "uart_tx" SITE "J17";  # TX to USB bridge
+IOBUF PORT "uart_tx" IO_TYPE=LVCMOS33 DRIVE=4;
+LOCATE COMP "uart_rx" SITE "H18";  # RX from USB bridge
+IOBUF PORT "uart_rx" IO_TYPE=LVCMOS33;
+
+## Status LEDs ########################################
+LOCATE COMP "led[0]" SITE "N18"; # LED 1: System reset
+LOCATE COMP "led[1]" SITE "N17"; # LED 2: CPU clock (2 Hz blink)
+LOCATE COMP "led[2]" SITE "L20"; # LED 3: Address bit 4
+LOCATE COMP "led[3]" SITE "M18"; # LED 4: CPU R/W
+
+IOBUF PORT "led[0]" IO_TYPE=LVCMOS33;
+IOBUF PORT "led[1]" IO_TYPE=LVCMOS33;
+IOBUF PORT "led[2]" IO_TYPE=LVCMOS33;
+IOBUF PORT "led[3]" IO_TYPE=LVCMOS33;
+
+## 7-Segment Display (PMOD_P4A) ######################
+LOCATE COMP "seg_a" SITE "E4";      # Segment A
+LOCATE COMP "seg_b" SITE "F1";      # Segment B
+LOCATE COMP "seg_c" SITE "F2";      # Segment C
+LOCATE COMP "seg_d" SITE "F3";      # Segment D
+LOCATE COMP "seg_e" SITE "G3";      # Segment E
+LOCATE COMP "seg_f" SITE "H4";      # Segment F
+LOCATE COMP "seg_g" SITE "H3";      # Segment G
+LOCATE COMP "seg_select" SITE "E1"; # Digit select
+
+IOBUF PORT "seg_a" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "seg_b" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "seg_c" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "seg_d" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "seg_e" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "seg_f" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "seg_g" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "seg_select" IO_TYPE=LVCMOS33 DRIVE=4;

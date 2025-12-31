@@ -1,0 +1,30 @@
+# Makefile for EhBASIC ROM
+
+AS = ca65
+LD = ld65
+TARGET = ehbasic_main
+HEX = basic_rom.hex
+BIN = ehbasic.bin
+
+.PHONY: all clean
+
+all: $(HEX)
+
+# Assemble EhBASIC with our wrapper
+$(TARGET).o: $(TARGET).s ehbasic.asm
+	$(AS) --cpu 6502 --target none -o $@ $<
+
+# Link to binary at $8000
+$(BIN): $(TARGET).o ehbasic.cfg
+	$(LD) -C ehbasic.cfg -o $@ $<
+
+# Convert to hex format for Verilog $readmemh
+$(HEX): $(BIN)
+	@echo "Converting binary to hex..."
+	@python3 -c "import sys; data = open('$<', 'rb').read(); \
+	             [print(format(b, '02x')) for b in data]" > $@
+	@echo "BASIC ROM size: $$(stat -c%s $<) bytes"
+	@echo "Hex file: $@"
+
+clean:
+	rm -f $(TARGET).o $(BIN) $(HEX)

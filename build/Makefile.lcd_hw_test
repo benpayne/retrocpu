@@ -1,0 +1,34 @@
+# LCD Hardware Test - Direct CPU writes
+
+TOP = lcd_hardware_test_top
+LPF = ../colorlight_i5.lpf
+VERILOG_SOURCES = \
+	../rtl/test/lcd_hardware_test_top.v \
+	../rtl/peripherals/lcd/lcd_controller.v \
+	../rtl/peripherals/lcd/lcd_timing.v \
+	../rtl/peripherals/lcd/lcd_init_fsm.v \
+	../rtl/peripherals/uart/uart_tx.v
+
+JSON = lcd_hw_test.json
+CONFIG = lcd_hw_test.config
+BIT = lcd_hw_test.bit
+
+.PHONY: all synth pnr bitstream program clean
+
+all: bitstream
+
+synth:
+	yosys -p "read_verilog $(VERILOG_SOURCES); synth_ecp5 -top $(TOP) -json $(JSON)"
+
+pnr: synth
+	nextpnr-ecp5 --25k --package CABGA381 --json $(JSON) --lpf $(LPF) --textcfg $(CONFIG) --freq 25
+
+bitstream: pnr
+	ecppack --compress --input $(CONFIG) --bit $(BIT)
+	@ls -lh $(BIT)
+
+program: bitstream
+	openFPGALoader -b colorlight-i5 $(BIT)
+
+clean:
+	rm -f $(JSON) $(CONFIG) $(BIT) *.log

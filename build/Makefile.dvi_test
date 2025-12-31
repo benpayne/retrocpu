@@ -1,0 +1,145 @@
+# Makefile for DVI Test Pattern Generator
+# retrocpu DVI Character Display GPU - Phase 3 Validation
+# Target: Colorlight i5 v7.0
+# Created: 2025-12-28
+
+#=============================================================================
+# Configuration
+#=============================================================================
+
+PROJECT     = dvi_test
+TOP_MODULE  = dvi_test_top
+DEVICE      = 25k
+PACKAGE     = CABGA381
+LPF_FILE    = colorlight_i5.lpf
+
+# Directories
+RTL_DIR     = ../rtl
+BUILD_DIR   = .
+SRC_TOP     = $(RTL_DIR)/top
+SRC_VIDEO   = $(RTL_DIR)/peripherals/video
+SRC_SYSTEM  = $(RTL_DIR)/system
+
+# Source files
+VERILOG_SOURCES = \
+	$(SRC_SYSTEM)/ecp5_pll.sv \
+	$(SRC_SYSTEM)/cdc_synchronizer.v \
+	$(SRC_VIDEO)/tmds_encoder.v \
+	$(SRC_VIDEO)/dvi_transmitter.v \
+	$(SRC_VIDEO)/my_vga_clk_generator.v \
+	$(SRC_VIDEO)/test_pattern_generator.v \
+	$(SRC_TOP)/dvi_test_top.v
+
+# Build products
+JSON_FILE   = $(BUILD_DIR)/$(PROJECT).json
+CONFIG_FILE = $(BUILD_DIR)/$(PROJECT)_out.config
+BITSTREAM   = $(BUILD_DIR)/$(PROJECT).bit
+SVF_FILE    = $(BUILD_DIR)/$(PROJECT).svf
+TIMING_RPT  = $(BUILD_DIR)/$(PROJECT)_timing.rpt
+
+#=============================================================================
+# Tools
+#=============================================================================
+
+YOSYS       = yosys
+NEXTPNR     = nextpnr-ecp5
+ECPPACK     = ecppack
+OPENOCD     = openFPGALoader
+
+# Tool options
+YOSYS_OPTS  = -q
+NEXTPNR_OPTS = --timing-allow-fail
+ECPPACK_OPTS = --compress
+
+#=============================================================================
+# Targets
+#=============================================================================
+
+.PHONY: all synth route bitstream program clean help
+
+all: bitstream
+
+# Synthesis with Yosys
+synth: $(JSON_FILE)
+
+$(JSON_FILE): $(VERILOG_SOURCES) $(LPF_FILE)
+	@echo "=========================================="
+	@echo "Synthesizing $(PROJECT)..."
+	@echo "=========================================="
+	$(YOSYS) $(YOSYS_OPTS) \
+		-p "read_verilog -sv $(VERILOG_SOURCES)" \
+		-p "synth_ecp5 -top $(TOP_MODULE) -json $(JSON_FILE)"
+	@echo "Synthesis complete: $(JSON_FILE)"
+
+# Place & Route with nextpnr
+route: $(CONFIG_FILE)
+
+$(CONFIG_FILE): $(JSON_FILE)
+	@echo "=========================================="
+	@echo "Place & Route for $(DEVICE)..."
+	@echo "=========================================="
+	$(NEXTPNR) \
+		--$(DEVICE) \
+		--package $(PACKAGE) \
+		--json $(JSON_FILE) \
+		--lpf $(LPF_FILE) \
+		--textcfg $(CONFIG_FILE) \
+		$(NEXTPNR_OPTS) \
+		| tee $(TIMING_RPT)
+	@echo "Place & Route complete: $(CONFIG_FILE)"
+
+# Bitstream generation
+bitstream: $(BITSTREAM)
+
+$(BITSTREAM): $(CONFIG_FILE)
+	@echo "=========================================="
+	@echo "Generating bitstream..."
+	@echo "=========================================="
+	$(ECPPACK) $(ECPPACK_OPTS) \
+		--svf $(SVF_FILE) \
+		--input $(CONFIG_FILE) \
+		--bit $(BITSTREAM)
+	@echo "Bitstream complete: $(BITSTREAM)"
+	@ls -lh $(BITSTREAM)
+
+# Program FPGA
+program: $(BITSTREAM)
+	@echo "=========================================="
+	@echo "Programming Colorlight i5..."
+	@echo "=========================================="
+	$(OPENOCD) -b colorlight-i5 $(BITSTREAM)
+
+# Clean build products
+clean:
+	@echo "Cleaning build products..."
+	rm -f $(JSON_FILE) $(CONFIG_FILE) $(BITSTREAM) $(SVF_FILE) $(TIMING_RPT)
+	rm -f *.log
+
+# Show timing report
+timing: $(TIMING_RPT)
+	@echo "=========================================="
+	@echo "Timing Summary:"
+	@echo "=========================================="
+	@grep -A 20 "Max frequency" $(TIMING_RPT) || echo "No timing report found. Run 'make route' first."
+
+# Help
+help:
+	@echo "DVI Test Pattern Generator Build System"
+	@echo "========================================"
+	@echo ""
+	@echo "Targets:"
+	@echo "  all        - Build bitstream (default)"
+	@echo "  synth      - Run synthesis only"
+	@echo "  route      - Run place & route only"
+	@echo "  bitstream  - Generate bitstream"
+	@echo "  program    - Program FPGA via openFPGALoader"
+	@echo "  timing     - Show timing report"
+	@echo "  clean      - Remove build products"
+	@echo "  help       - Show this help"
+	@echo ""
+	@echo "Configuration:"
+	@echo "  Project:    $(PROJECT)"
+	@echo "  Top module: $(TOP_MODULE)"
+	@echo "  Device:     ECP5-$(DEVICE)"
+	@echo "  Package:    $(PACKAGE)"
+	@echo "  LPF file:   $(LPF_FILE)"

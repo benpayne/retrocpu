@@ -1,0 +1,17 @@
+# Cocotb test for UART status register
+
+SIM ?= icarus
+TOPLEVEL_LANG ?= verilog
+
+# RTL source files
+VERILOG_SOURCES += $(PWD)/../../rtl/peripherals/uart/uart.v
+VERILOG_SOURCES += $(PWD)/../../rtl/peripherals/uart/uart_tx.v
+VERILOG_SOURCES += $(PWD)/../../rtl/peripherals/uart/uart_rx.v
+
+# Test module
+MODULE = test_uart_status
+
+# Top-level module
+TOPLEVEL = uart
+
+include $(shell cocotb-config --makefiles)/Makefile.sim

@@ -1,0 +1,56 @@
+# Simple LCD Test Build
+# Minimal design for hardware testing
+
+TOP = lcd_test_top
+LPF = ../colorlight_i5.lpf
+
+# Verilog source files (minimal set)
+VERILOG_SOURCES = \
+	../rtl/test/lcd_test_top.v \
+	../rtl/peripherals/lcd/lcd_controller.v \
+	../rtl/peripherals/lcd/lcd_timing.v \
+	../rtl/peripherals/lcd/lcd_init_fsm.v
+
+# Output files
+JSON = lcd_test.json
+CONFIG = lcd_test.config
+BIT = lcd_test.bit
+
+.PHONY: all synth pnr bitstream program clean
+
+all: bitstream
+
+synth:
+	@echo "=== Synthesizing LCD Test ==="
+	yosys -p "read_verilog $(VERILOG_SOURCES); synth_ecp5 -top $(TOP) -json $(JSON)" 2>&1 | tee lcd_test_synth.log
+	@echo "Synthesis complete: $(JSON)"
+
+pnr: synth
+	@echo "=== Place and Route ==="
+	nextpnr-ecp5 --25k --package CABGA381 --json $(JSON) --lpf $(LPF) \
+		--textcfg $(CONFIG) --freq 25 2>&1 | tee lcd_test_pnr.log
+	@echo "Place-and-route complete: $(CONFIG)"
+
+bitstream: pnr
+	@echo "=== Generating Bitstream ==="
+	ecppack --compress --input $(CONFIG) --bit $(BIT)
+	@echo "Bitstream ready: $(BIT)"
+	@ls -lh $(BIT)
+
+program: bitstream
+	@echo "=== Programming FPGA ==="
+	openFPGALoader -b colorlight-i5 $(BIT)
+
+clean:
+	rm -f $(JSON) $(CONFIG) $(BIT) *.log
+
+help:
+	@echo "LCD Test Makefile"
+	@echo ""
+	@echo "Targets:"
+	@echo "  all       - Build bitstream (default)"
+	@echo "  synth     - Synthesize only"
+	@echo "  pnr       - Place and route"
+	@echo "  bitstream - Generate bitstream"
+	@echo "  program   - Program FPGA"
+	@echo "  clean     - Remove build artifacts"

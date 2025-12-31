@@ -1,0 +1,405 @@
+VGA 640x480 @ 60Hz - Detailed ASCII Timing Diagrams
+=====================================================
+
+HORIZONTAL TIMING - SINGLE LINE (31.778 μs total)
+==================================================
+
+Pixel Counter Values:
+    0                                     640  656              752              800
+    ├─────────────────────────────────────┼────┼────────────────┼────────────────┤
+    │        ACTIVE VIDEO REGION          │ FP │   SYNC PULSE   │  BACK PORCH    │
+    │         (640 pixels)                │(16)│   (96 pixels)  │  (48 pixels)   │
+    └─────────────────────────────────────┴────┴────────────────┴────────────────┘
+
+    25.422 μs                              0.635  3.813 μs        1.907 μs
+                                           μs
+
+Timing Waveforms:
+
+PIXEL_CLK: ‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_
+           (25.175 MHz, 39.72 ns period)
+
+H_COUNT:   000 001 002 003 ... 639 640 641 ... 655 656 657 ... 751 752 753 ... 799 000
+           │<──────────────────────►│<─────►│<──────────────►│<──────────────►│
+
+HSYNC:     ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾____________________‾‾‾‾‾‾‾‾‾‾‾
+           │                                               SYNC                     │
+           │<─────────────────────────── HIGH ────────────►│<──── LOW ────►│<─HIGH─►
+
+H_DE:      ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾______________________________________
+           │          DISPLAY ENABLE                │      BLANKING                 │
+
+RGB_DATA:  [Pix0][Pix1][Pix2]............[Pix639][BLACK/IGNORED.......................]
+
+H_STATE:   │<───────── ACTIVE ────────────►│ FP  │<─── SYNC ───►│<──── BACK ─────►│
+
+
+VERTICAL TIMING - FULL FRAME (16.683 ms total)
+===============================================
+
+Line Counter Values:
+    0                                     480 490  492                         525
+    ├─────────────────────────────────────┼───┼────┼───────────────────────────┤
+    │        ACTIVE VIDEO REGION          │FP │SYNC│      BACK PORCH          │
+    │         (480 lines)                 │(10)│(2) │      (33 lines)          │
+    └─────────────────────────────────────┴───┴────┴───────────────────────────┘
+
+    15.253 ms                              317.8 63.6       1.049 ms
+                                           μs    μs
+
+Timing Waveforms:
+
+LINE_CLK:  ‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_
+           (31.469 kHz, 31.778 μs period - one pulse per horizontal line)
+
+V_COUNT:   000 001 002 003 ... 479 480 481 ... 489 490 491 492 493 ... 524 000
+           │<──────────────────────►│<─────►│<──►│<──────────────────────►│
+
+VSYNC:     ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾____‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+           │                                               SYNC                  │
+           │<────────────────────── HIGH ──────────────►│<LOW►│<──── HIGH ─────►│
+
+V_DE:      ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾_________________________________________
+           │          DISPLAY ENABLE                │         VERTICAL BLANKING        │
+
+V_STATE:   │<───────── ACTIVE ────────────►│ FP  │SYNC│<───────── BACK ────────────►│
+
+
+COMBINED FRAME STRUCTURE
+========================
+
+Complete frame showing both horizontal and vertical timing:
+
+Line    Horizontal Structure                                      V_Count  VSYNC V_DE
+────    ─────────────────────────────────────────────────────────────────────────────
+  0     [Active: 640px][FP:16][Sync:96][BP:48]                      0       H     H
+  1     [Active: 640px][FP:16][Sync:96][BP:48]                      1       H     H
+  2     [Active: 640px][FP:16][Sync:96][BP:48]                      2       H     H
+ ...    ................................................            ...      H     H
+ 478    [Active: 640px][FP:16][Sync:96][BP:48]                    478       H     H
+ 479    [Active: 640px][FP:16][Sync:96][BP:48]  <- Last active    479       H     H
+────────────────────────────────────────────────────────────────────────────────────
+ 480    [Blank: 640px][FP:16][Sync:96][BP:48]   <- V Front Porch  480       H     L
+ 481    [Blank: 640px][FP:16][Sync:96][BP:48]                     481       H     L
+ ...    ................................................           ...       H     L
+ 489    [Blank: 640px][FP:16][Sync:96][BP:48]                     489       H     L
+────────────────────────────────────────────────────────────────────────────────────
+ 490    [Blank: 640px][FP:16][Sync:96][BP:48]   <- V Sync         490       L     L
+ 491    [Blank: 640px][FP:16][Sync:96][BP:48]                     491       L     L
+────────────────────────────────────────────────────────────────────────────────────
+ 492    [Blank: 640px][FP:16][Sync:96][BP:48]   <- V Back Porch   492       H     L
+ 493    [Blank: 640px][FP:16][Sync:96][BP:48]                     493       H     L
+ ...    ................................................           ...       H     L
+ 524    [Blank: 640px][FP:16][Sync:96][BP:48]                     524       H     L
+────────────────────────────────────────────────────────────────────────────────────
+Then repeat from line 0
+
+
+DISPLAY ENABLE (DE) SIGNAL GENERATION
+======================================
+
+DE signal is HIGH only when BOTH horizontal and vertical counters are in active region:
+
+DE = H_DE && V_DE
+
+Truth Table:
+H_Count    V_Count    H_DE    V_DE    DE      Description
+─────────────────────────────────────────────────────────────────────
+0-639      0-479      1       1       1       Active video - output pixels
+640-799    0-479      0       1       0       Horizontal blanking
+0-639      480-524    1       0       0       Vertical blanking (but H active)
+640-799    480-524    0       0       0       Both H and V blanking
+
+Visual representation of DE signal for one line during different frame regions:
+
+During Active Lines (V_Count 0-479):
+Pixel:  0                     640                                    800
+        ├─────────────────────┼──────────────────────────────────────┤
+DE:     ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾_______________________________________
+        │   Output pixels    │        Blanking (ignore data)        │
+
+During Blanking Lines (V_Count 480-524):
+Pixel:  0                     640                                    800
+        ├─────────────────────┼──────────────────────────────────────┤
+DE:     ____________________________________________________________________
+        │              Entire line is blanked (ignore data)              │
+
+
+PIXEL CLOCK DOMAIN TIMING
+==========================
+
+Detailed view of pixel clock and data relationship:
+
+Clock Cycle:     0              1              2              3
+
+PIXEL_CLK:  ────┐  ┌────┐  ┌────┐  ┌────┐  ┌────┐  ┌────┐  ┌────
+                └──┘    └──┘    └──┘    └──┘    └──┘    └──┘
+
+                ← 39.72 ns →
+
+H_COUNT:    ────< N >──────< N+1 >────< N+2 >────< N+3 >────
+
+RGB_DATA:   ─────────<Pixel N>────<Pixel N+1>──<Pixel N+2>──
+                     (8 bits)    (8 bits)     (8 bits)
+
+DE:         ────‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾────
+                 (HIGH during active region)
+
+HSYNC:      ─────────────────────────────────────────────────
+                 (HIGH during active, goes LOW during sync)
+
+Notes:
+- Data should be stable at rising edge of pixel clock
+- New pixel data is presented on each clock cycle during active region
+- Counter increments on each rising edge
+
+
+STATE MACHINE REGIONS
+=====================
+
+Horizontal State Machine (changes every pixel clock):
+
+State      H_Count Range    Duration    HSYNC  H_DE   Description
+──────────────────────────────────────────────────────────────────
+H_ACTIVE   0 - 639          640 clks    HIGH   HIGH   Output visible pixels
+H_FRONT    640 - 655        16 clks     HIGH   LOW    Front porch
+H_SYNC     656 - 751        96 clks     LOW    LOW    Sync pulse
+H_BACK     752 - 799        48 clks     HIGH   LOW    Back porch
+           (wraps to 0)
+
+State Transitions:
+H_ACTIVE → H_FRONT at h_count = 640
+H_FRONT → H_SYNC at h_count = 656
+H_SYNC → H_BACK at h_count = 752
+H_BACK → H_ACTIVE at h_count = 800 (resets to 0)
+
+
+Vertical State Machine (changes every line):
+
+State      V_Count Range    Duration    VSYNC  V_DE   Description
+──────────────────────────────────────────────────────────────────
+V_ACTIVE   0 - 479          480 lines   HIGH   HIGH   Output visible lines
+V_FRONT    480 - 489        10 lines    HIGH   LOW    Front porch
+V_SYNC     490 - 491        2 lines     LOW    LOW    Sync pulse
+V_BACK     492 - 524        33 lines    HIGH   LOW    Back porch
+           (wraps to 0)
+
+State Transitions:
+V_ACTIVE → V_FRONT at v_count = 480
+V_FRONT → V_SYNC at v_count = 490
+V_SYNC → V_BACK at v_count = 492
+V_BACK → V_ACTIVE at v_count = 525 (resets to 0)
+
+
+COORDINATE MAPPING EXAMPLES
+===========================
+
+Example pixel positions and their counter values:
+
+Screen Position         H_Count  V_Count  DE    Pixel Address
+─────────────────────────────────────────────────────────────────
+Top-left corner         0        0        1     0
+Top-right corner        639      0        1     639
+Bottom-left corner      0        479      1     307,200
+Bottom-right corner     639      479      1     307,839
+Center of screen        320      240      1     153,920
+Start of H blanking     640      240      0     N/A
+During H sync           700      240      0     N/A
+During V front porch    320      485      0     N/A
+During V sync           320      490      0     N/A
+
+Pixel Address Formula: address = (v_count × 640) + h_count
+(Valid only when DE = 1, i.e., h_count < 640 AND v_count < 480)
+
+
+CHARACTER MODE MAPPING (80x30 characters, 8x16 pixels)
+========================================================
+
+Example character cell positions:
+
+Screen Position         Char_X  Char_Y  Pixel_X  Pixel_Y  Char Addr
+─────────────────────────────────────────────────────────────────────
+Top-left character      0       0       0-7      0-15     0
+Top-right character     79      0       632-639  0-15     79
+Bottom-left character   0       29      0-7      464-479  2320
+Bottom-right character  79      29      632-639  464-479  2399
+Center character        40      15      320-327  240-255  1240
+
+Formulas:
+  char_x = h_count / 8 = h_count[9:3]     (0-79)
+  char_y = v_count / 16 = v_count[9:4]    (0-29)
+  char_pixel_x = h_count % 8 = h_count[2:0]   (0-7)
+  char_pixel_y = v_count % 16 = v_count[3:0]  (0-15)
+  char_addr = (char_y × 80) + char_x      (0-2399)
+
+
+FRAME TIMING SUMMARY
+====================
+
+One Complete Frame:
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│  Frame Period: 16.683 ms (59.940 Hz)                       │
+│                                                             │
+│  ┌─────────────────────────────────────────────┐           │
+│  │                                             │           │
+│  │  Active Video: 15.253 ms (480 lines)        │           │
+│  │  ┌──────────────────────────────────────┐   │           │
+│  │  │  Visible Area: 640 x 480 pixels     │   │           │
+│  │  │  307,200 total pixels                │   │           │
+│  │  │  DE = HIGH throughout this region    │   │           │
+│  │  └──────────────────────────────────────┘   │           │
+│  │                                             │           │
+│  └─────────────────────────────────────────────┘           │
+│                                                             │
+│  Vertical Blanking: 1.430 ms (45 lines)                    │
+│  ├─ Front Porch: 10 lines                                  │
+│  ├─ Sync Pulse: 2 lines (VSYNC = LOW)                      │
+│  └─ Back Porch: 33 lines                                   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+One Complete Horizontal Line (repeated 525 times per frame):
+┌─────────────────────────────────────────────────────────────┐
+│  Line Period: 31.778 μs (31.469 kHz)                       │
+│                                                             │
+│  ┌─────────────────────────────┐                           │
+│  │  Active Pixels: 25.422 μs   │                           │
+│  │  (640 pixels, DE = HIGH)    │                           │
+│  └─────────────────────────────┘                           │
+│                                                             │
+│  Horizontal Blanking: 6.356 μs (160 pixels)                │
+│  ├─ Front Porch: 16 pixels (0.635 μs)                      │
+│  ├─ Sync Pulse: 96 pixels (3.813 μs, HSYNC = LOW)          │
+│  └─ Back Porch: 48 pixels (1.907 μs)                       │
+└─────────────────────────────────────────────────────────────┘
+
+
+SYNC POLARITY DETAIL
+=====================
+
+HSYNC Polarity (Negative/Active Low):
+                     Idle State              Sync Pulse            Idle State
+    Voltage:        0.7V (HIGH)            0.0V (LOW)            0.7V (HIGH)
+    Logic:          1                      0                     1
+    Duration:       656 pixels             96 pixels             48 pixels
+                    (active + FP)          (sync width)          (back porch)
+
+VSYNC Polarity (Negative/Active Low):
+                     Idle State              Sync Pulse            Idle State
+    Voltage:        0.7V (HIGH)            0.0V (LOW)            0.7V (HIGH)
+    Logic:          1                      0                     1
+    Duration:       490 lines              2 lines               33 lines
+                    (active + FP)          (sync width)          (back porch)
+
+Important: Both sync signals are NEGATIVE polarity (active LOW)
+- Sync pulses are asserted by pulling signal LOW
+- Idle/inactive state is HIGH
+- This is opposite of positive polarity sync used in some other video modes
+
+
+IMPLEMENTATION PSEUDOCODE
+=========================
+
+module video_timing_generator (
+    input clk_25mhz,        // 25.175 MHz pixel clock
+    input reset,
+    output hsync,           // Horizontal sync (negative polarity)
+    output vsync,           // Vertical sync (negative polarity)
+    output display_enable,  // Display enable (active high)
+    output [9:0] h_count,   // Horizontal counter (0-799)
+    output [9:0] v_count    // Vertical counter (0-524)
+);
+
+// Counter logic (increments every pixel clock):
+always @(posedge clk_25mhz) begin
+    if (reset) begin
+        h_count <= 0;
+        v_count <= 0;
+    end else begin
+        // Horizontal counter
+        if (h_count == 799) begin
+            h_count <= 0;
+            // Vertical counter (increments at end of line)
+            if (v_count == 524)
+                v_count <= 0;
+            else
+                v_count <= v_count + 1;
+        end else begin
+            h_count <= h_count + 1;
+        end
+    end
+end
+
+// Sync signal generation (negative polarity):
+assign hsync = ~((h_count >= 656) && (h_count < 752));
+assign vsync = ~((v_count >= 490) && (v_count < 492));
+
+// Display enable generation:
+assign h_de = (h_count < 640);
+assign v_de = (v_count < 480);
+assign display_enable = h_de && v_de;
+
+endmodule
+
+
+CRITICAL TIMING REQUIREMENTS
+=============================
+
+1. Setup/Hold Times:
+   - RGB data must be stable ±5ns around pixel clock rising edge
+   - Sync signals must be stable ±2ns around pixel clock edge
+
+2. Clock Jitter:
+   - Maximum pixel clock jitter: ±500ps
+   - Affects image stability on monitor
+
+3. Skew Between Signals:
+   - Max skew between RGB channels: ±1ns
+   - Max skew between sync signals: ±2ns
+   - Critical for image quality
+
+4. Rise/Fall Times:
+   - Sync signals: <10ns rise/fall time
+   - RGB signals: <5ns rise/fall time
+   - Faster is better for digital displays
+
+
+DEBUGGING TIPS
+==============
+
+Common Issues and Counter Values to Check:
+
+No Display:
+- Verify h_count reaches 799 and wraps to 0
+- Verify v_count reaches 524 and wraps to 0
+- Check that DE goes HIGH when h_count < 640 AND v_count < 480
+
+Image Shifted Horizontally:
+- Check H sync pulse timing (should be at h_count 656-751)
+- Verify H back porch duration (48 pixels)
+
+Image Shifted Vertically:
+- Check V sync pulse timing (should be at v_count 490-491)
+- Verify V back porch duration (33 lines)
+
+Image Torn/Corrupted:
+- Check that pixel data changes only when DE = HIGH
+- Verify pixel clock is stable ~25 MHz
+- Check for timing violations in FPGA
+
+Monitor "Out of Range":
+- Pixel clock too far from 25.175 MHz
+- Total H or V counts incorrect
+- Sync polarities wrong
+
+Test Pattern Signals:
+H_Count    V_Count    Expected Display
+─────────────────────────────────────────
+0-319      0-479      Left half of screen
+320-639    0-479      Right half of screen
+0-639      0-239      Top half of screen
+0-639      240-479    Bottom half of screen
+
+─────────────────────────────────────────────────────────────
+End of VGA Timing Diagrams

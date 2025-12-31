@@ -1,0 +1,18 @@
+# Cocotb Makefile for LCD Controller Write Tests
+
+SIM ?= icarus
+TOPLEVEL_LANG ?= verilog
+
+VERILOG_SOURCES = \
+	../../rtl/peripherals/lcd/lcd_controller.v \
+	../../rtl/peripherals/lcd/lcd_timing.v \
+	../../rtl/peripherals/lcd/lcd_init_fsm.v
+
+# Module to test
+TOPLEVEL = lcd_controller
+
+# Python test module
+MODULE = test_lcd_controller_writes
+
+# Include cocotb makefiles
+include $(shell cocotb-config --makefiles)/Makefile.sim

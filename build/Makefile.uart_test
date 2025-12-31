@@ -1,0 +1,87 @@
+# UART RX 7-Segment Test Build
+# Standalone test to verify UART RX hardware
+
+PROJECT = uart_rx_7seg_test
+TOP = uart_rx_7seg_test
+DEVICE = 25k
+PACKAGE = CABGA381
+SPEED = 6
+LPF = ../colorlight_i5_debug.lpf
+
+RTL_DIR = ../rtl
+BUILD_DIR = .
+SYNTH_DIR = $(BUILD_DIR)/synth
+PNR_DIR = $(BUILD_DIR)/pnr
+
+# Source files for test
+RTL_SOURCES = \
+	$(RTL_DIR)/peripherals/uart/uart_rx.v \
+	$(RTL_DIR)/test/$(TOP).v
+
+# Output files
+JSON = $(SYNTH_DIR)/$(PROJECT).json
+CONFIG = $(PNR_DIR)/$(PROJECT).config
+BITSTREAM = $(PROJECT).bit
+
+# Tools
+YOSYS = yosys
+NEXTPNR = nextpnr-ecp5
+ECPPACK = ecppack
+OPENFPGALOADER = openFPGALoader
+
+# Yosys synthesis flags
+YOSYS_FLAGS = -q -l $(SYNTH_DIR)/yosys.log
+
+# nextpnr flags
+NEXTPNR_FLAGS = \
+	--$(DEVICE) \
+	--package $(PACKAGE) \
+	--speed $(SPEED) \
+	--json $(JSON) \
+	--lpf $(LPF) \
+	--textcfg $(CONFIG) \
+	--timing-allow-fail \
+	--ignore-loops \
+	--log $(PNR_DIR)/nextpnr.log
+
+.PHONY: all clean synth pnr bitstream program dirs
+
+all: dirs bitstream
+
+dirs:
+	@mkdir -p $(SYNTH_DIR) $(PNR_DIR)
+
+# Synthesis
+synth: dirs
+	@echo "Running Yosys synthesis for UART RX test..."
+	$(YOSYS) $(YOSYS_FLAGS) -p \
+		"read_verilog -sv $(RTL_SOURCES); \
+		 hierarchy -check -top $(TOP); \
+		 synth_ecp5 -noabc9 -top $(TOP) -json $(JSON)" \
+		2>&1 | tee $(SYNTH_DIR)/yosys.log
+	@echo "Synthesis complete: $(JSON)"
+
+# Place and route
+pnr: synth
+	@echo "Running nextpnr-ecp5 place-and-route..."
+	$(NEXTPNR) $(NEXTPNR_FLAGS)
+	@echo "Place-and-route complete: $(CONFIG)"
+
+# Generate bitstream
+bitstream: pnr
+	@echo "Generating bitstream..."
+	$(ECPPACK) --compress --input $(CONFIG) --bit $(BITSTREAM)
+	@echo "Bitstream ready: $(BITSTREAM)"
+	@ls -lh $(BITSTREAM)
+
+# Program FPGA
+program: bitstream
+	@echo "Programming FPGA (Colorlight i5)..."
+	$(OPENFPGALOADER) -b colorlight-i5 $(BITSTREAM)
+
+# Clean build artifacts
+clean:
+	rm -rf $(SYNTH_DIR) $(PNR_DIR)
+	rm -f $(BITSTREAM)
+	rm -f *.log
+	@echo "Build artifacts cleaned"

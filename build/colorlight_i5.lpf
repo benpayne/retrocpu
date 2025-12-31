@@ -1,0 +1,71 @@
+# Colorlight i5 v7.0 Constraints for DVI Character Display GPU
+# retrocpu project
+# Created: 2025-12-28
+# Validated: 2025-12-28 on Colorlight i5 v7.0
+
+BLOCK RESETPATHS;
+BLOCK ASYNCPATHS;
+
+#=============================================================================
+# Clock Input
+#=============================================================================
+
+# 25 MHz oscillator
+LOCATE COMP "clk_25mhz" SITE "P3";
+IOBUF  PORT "clk_25mhz" PULLMODE=NONE IO_TYPE=LVCMOS33;
+FREQUENCY PORT "clk_25mhz" 25 MHZ;
+
+#=============================================================================
+# HDMI/DVI Output
+# CRITICAL: LVCMOS33D (differential) is REQUIRED for proper TMDS signaling
+# Using LVCMOS33 (single-ended) will result in no signal detection
+#=============================================================================
+
+# TMDS Data Channel 0 (Blue)
+LOCATE COMP "gpdi_dp[0]" SITE "G19";
+LOCATE COMP "gpdi_dn[0]" SITE "H20";
+IOBUF PORT "gpdi_dp[0]" IO_TYPE=LVCMOS33D DRIVE=4;
+IOBUF PORT "gpdi_dn[0]" IO_TYPE=LVCMOS33D DRIVE=4;
+
+# TMDS Data Channel 1 (Green)
+LOCATE COMP "gpdi_dp[1]" SITE "E20";
+LOCATE COMP "gpdi_dn[1]" SITE "F19";
+IOBUF PORT "gpdi_dp[1]" IO_TYPE=LVCMOS33D DRIVE=4;
+IOBUF PORT "gpdi_dn[1]" IO_TYPE=LVCMOS33D DRIVE=4;
+
+# TMDS Data Channel 2 (Red)
+LOCATE COMP "gpdi_dp[2]" SITE "C20";
+LOCATE COMP "gpdi_dn[2]" SITE "D19";
+IOBUF PORT "gpdi_dp[2]" IO_TYPE=LVCMOS33D DRIVE=4;
+IOBUF PORT "gpdi_dn[2]" IO_TYPE=LVCMOS33D DRIVE=4;
+
+# TMDS Clock Channel
+LOCATE COMP "gpdi_dp[3]" SITE "J19";
+LOCATE COMP "gpdi_dn[3]" SITE "K19";
+IOBUF PORT "gpdi_dp[3]" IO_TYPE=LVCMOS33D DRIVE=4;
+IOBUF PORT "gpdi_dn[3]" IO_TYPE=LVCMOS33D DRIVE=4;
+
+#=============================================================================
+# Test Pattern Selection (optional - can use buttons or leave floating)
+#=============================================================================
+
+# Pattern select inputs (if using buttons, otherwise tie to constants in Verilog)
+# LOCATE COMP "pattern_sel[0]" SITE "R1";  # FIRE1 button
+# LOCATE COMP "pattern_sel[1]" SITE "T1";  # FIRE2 button
+# IOBUF PORT "pattern_sel[0]" PULLMODE=DOWN IO_TYPE=LVCMOS33;
+# IOBUF PORT "pattern_sel[1]" PULLMODE=DOWN IO_TYPE=LVCMOS33;
+
+#=============================================================================
+# Status LED
+#=============================================================================
+
+# LED output (blinks at frame rate)
+LOCATE COMP "led" SITE "U16";
+IOBUF PORT "led" PULLMODE=NONE IO_TYPE=LVCMOS33 DRIVE=4;
+
+#=============================================================================
+# JTAG and SPI Flash Configuration
+#=============================================================================
+
+# SYSCONFIG for programming
+SYSCONFIG CONFIG_IOVOLTAGE=3.3 COMPRESS_CONFIG=ON MCCLK_FREQ=62 SLAVE_SPI_PORT=DISABLE MASTER_SPI_PORT=ENABLE SLAVE_PARALLEL_PORT=DISABLE;

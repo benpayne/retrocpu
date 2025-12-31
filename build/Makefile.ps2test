@@ -1,0 +1,78 @@
+# PS/2 Baseline Test - Using proven ps2_direct_with_display.v
+PROJECT = ps2_test
+TOP = ps2_direct_with_display
+DEVICE = 25k
+PACKAGE = CABGA381
+SPEED = 6
+
+# Use the test LPF from ps2-controller-lib
+LPF = /home/bpayne/wip/ps2-controller-lib/test/fpga/colorlight_i5.lpf
+
+# Directories
+BUILD_DIR = .
+SYNTH_DIR = $(BUILD_DIR)/synth_ps2test
+PNR_DIR = $(BUILD_DIR)/pnr_ps2test
+
+# Source - just the test module (it includes everything via includes)
+RTL_SOURCE = /home/bpayne/wip/ps2-controller-lib/test/fpga/ps2_direct_with_display.v
+
+# Output files
+JSON = $(SYNTH_DIR)/$(PROJECT).json
+CONFIG = $(PNR_DIR)/$(PROJECT).config
+BITSTREAM = $(PROJECT).bit
+
+# Tools
+YOSYS = yosys
+NEXTPNR = nextpnr-ecp5
+ECPPACK = ecppack
+OPENFPGALOADER = openFPGALoader
+
+# Yosys synthesis
+YOSYS_FLAGS = -q
+
+# nextpnr flags
+NEXTPNR_FLAGS = \
+	--$(DEVICE) \
+	--package $(PACKAGE) \
+	--speed $(SPEED) \
+	--json $(JSON) \
+	--lpf $(LPF) \
+	--textcfg $(CONFIG) \
+	--timing-allow-fail
+
+.PHONY: all synth pnr bitstream program clean
+
+all: bitstream
+
+synth: $(JSON)
+
+$(JSON): $(RTL_SOURCE)
+	@mkdir -p $(SYNTH_DIR)
+	@echo "Running Yosys synthesis..."
+	$(YOSYS) $(YOSYS_FLAGS) -p \
+		"read_verilog -sv $(RTL_SOURCE); \
+		 hierarchy -check -top $(TOP); \
+		 synth_ecp5 -top $(TOP) -json $(JSON)"
+
+pnr: $(CONFIG)
+
+$(CONFIG): $(JSON)
+	@mkdir -p $(PNR_DIR)
+	@echo "Running nextpnr-ecp5 place-and-route..."
+	$(NEXTPNR) $(NEXTPNR_FLAGS)
+
+bitstream: $(BITSTREAM)
+
+$(BITSTREAM): $(CONFIG)
+	@echo "Generating bitstream..."
+	$(ECPPACK) --compress --input $(CONFIG) --bit $(BITSTREAM)
+	@ls -lh $(BITSTREAM)
+
+program: $(BITSTREAM)
+	@echo "Programming FPGA..."
+	$(OPENFPGALOADER) -b colorlight-i5 $(BITSTREAM)
+
+clean:
+	rm -rf $(SYNTH_DIR) $(PNR_DIR)
+	rm -f $(BITSTREAM)
+	@echo "PS/2 test build artifacts cleaned"

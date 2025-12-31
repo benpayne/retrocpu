@@ -1,0 +1,69 @@
+# Common Makefile for cocotb tests - RetroCPU GPU
+# Include this from individual test Makefiles
+
+# Simulator selection
+SIM ?= icarus
+
+# Cocotb configuration
+COCOTB_REDUCED_LOG_FMT = 1
+WAVES ?= 0
+
+# Verilog sources - base paths
+RTL_DIR = ../../rtl
+VIDEO_DIR = $(RTL_DIR)/peripherals/video
+SYSTEM_DIR = $(RTL_DIR)/system
+TEST_DIR = $(RTL_DIR)/test
+
+# Icarus Verilog flags
+COMPILE_ARGS += -g2012 -I$(RTL_DIR) -I$(VIDEO_DIR) -I$(SYSTEM_DIR)
+
+# Waveform generation
+ifeq ($(WAVES),1)
+    COMPILE_ARGS += -DWAVES
+    PLUSARGS += +vcd
+    ifeq ($(SIM),icarus)
+        COMPILE_ARGS += -DIVERILOG
+        SIM_ARGS += -fst
+    endif
+endif
+
+# Verilator flags (if used)
+ifeq ($(SIM),verilator)
+    COMPILE_ARGS += --trace --trace-structs
+    EXTRA_ARGS += --Wno-fatal
+endif
+
+# Test timeout
+COCOTB_TEST_TIMEOUT_NS ?= 1000000
+
+# Python path for test utilities
+export PYTHONPATH := $(shell pwd)/../:$(PYTHONPATH)
+
+# Default target
+.PHONY: all
+all: sim
+
+# Clean target
+.PHONY: clean
+clean:
+	rm -rf sim_build/
+	rm -f results.xml
+	rm -f *.vcd *.fst *.vvp
+	rm -rf __pycache__/
+
+# Help target
+.PHONY: help
+help:
+	@echo "Cocotb Test Makefile"
+	@echo "===================="
+	@echo ""
+	@echo "Targets:"
+	@echo "  make          - Run simulation (default)"
+	@echo "  make clean    - Clean build artifacts"
+	@echo "  make WAVES=1  - Generate waveform files"
+	@echo ""
+	@echo "Variables:"
+	@echo "  SIM=icarus    - Use Icarus Verilog (default)"
+	@echo "  SIM=verilator - Use Verilator"
+	@echo "  WAVES=1       - Enable waveform dumping"
+	@echo ""

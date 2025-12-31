@@ -240,9 +240,8 @@ CMD_DEPOSIT:
 ; ============================================================================
 ; CMD_GO - Jump to BASIC entry point
 ; Format: G
-; Jumps to OSI BASIC COLD_START at $9D11
+; Jumps to OSI BASIC ROM start at $8000
 ; NEVER RETURNS - BASIC takes over
-; NOTE: $8000 contains data tables, $9D11 is actual entry point!
 ; ============================================================================
 CMD_GO:
     ; Print message
@@ -255,7 +254,7 @@ CMD_GO:
     BNE @MSG_LOOP
 
 @JUMP:
-    JMP $9D11          ; OSI BASIC COLD_START entry point (not $8000!)
+    JMP $8000          ; OSI BASIC ROM start (cold start entry point)
 
 ; ============================================================================
 ; CMD_HELP - Display help
@@ -556,30 +555,11 @@ IRQ:
     RTI
 
 ; ============================================================================
-; OSI BASIC I/O Vectors ($FFF0-$FFF8)
-; These vectors are required for OSI BASIC to work properly.
-; BASIC JSRs to these addresses for character I/O.
-; ============================================================================
-
-.segment "IOVECTORS"
-
-VEC_CHRIN:
-    JMP CHRIN       ; $FFF0-$FFF2: Character input vector
-
-VEC_CHROUT:
-    JMP CHROUT      ; $FFF3-$FFF5: Character output vector
-
-VEC_LOAD:
-    ; BASIC calls this to check for BREAK key
-    ; Return with A=0 for no break
-    LDA #0          ; $FFF6-$FFF8: Load/break check
-    RTS
-
-; ============================================================================
-; Hardware Interrupt Vectors ($FFFA-$FFFF)
+; Vectors at end of ROM ($FFFA-$FFFF)
 ; ============================================================================
 
 .segment "VECTORS"
+.org $FFFA
 
 .word NMI           ; $FFFA-$FFFB: NMI vector
 .word RESET         ; $FFFC-$FFFD: RESET vector
