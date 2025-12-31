@@ -281,3 +281,84 @@ class TestMemoryStressTest:
             value = monitor.examine(addr)
             assert value == expected, \
                 f"Pattern test failed at ${addr}: expected ${expected}, got ${value}"
+
+
+class TestUARTDirectWrite:
+    """Test writing directly to UART via monitor D command."""
+
+    def test_uart_direct_write(self, serial_port):
+        """Test that D command can write directly to UART_DATA register."""
+        # Clear buffer
+        if serial_port.in_waiting:
+            serial_port.read(serial_port.in_waiting)
+
+        # Write 'X' (0x58) directly to UART_DATA at $C000
+        cmd = "D C000 58\r"
+        for char in cmd:
+            serial_port.write(char.encode())
+            time.sleep(0.1)
+
+        time.sleep(0.5)
+
+        # Read response
+        if serial_port.in_waiting:
+            data = serial_port.read(serial_port.in_waiting)
+            
+            # The 'X' should appear in the output when written to UART
+            assert 0x58 in data, f"Expected to receive 'X' (0x58) in output, got: {data.hex()}"
+            
+            # Should also see the confirmation message
+            text = data.decode('utf-8', errors='replace')
+            assert 'C000' in text, "Should see address confirmation"
+            assert '58' in text, "Should see value confirmation"
+        else:
+            assert False, "No response from monitor"
+
+    def test_uart_multiple_chars(self, serial_port):
+        """Test writing multiple characters to UART in sequence."""
+        # Clear buffer
+        if serial_port.in_waiting:
+            serial_port.read(serial_port.in_waiting)
+
+        test_chars = [
+            ('41', 'A'),  # 0x41 = 'A'
+            ('42', 'B'),  # 0x42 = 'B'
+            ('43', 'C'),  # 0x43 = 'C'
+        ]
+
+        received_chars = []
+
+        for hex_val, expected_char in test_chars:
+            cmd = f"D C000 {hex_val}\r"
+            for char in cmd:
+                serial_port.write(char.encode())
+                time.sleep(0.1)
+            
+            time.sleep(0.5)
+            
+            if serial_port.in_waiting:
+                data = serial_port.read(serial_port.in_waiting)
+                if ord(expected_char) in data:
+                    received_chars.append(expected_char)
+
+        # Should have received all three characters
+        assert len(received_chars) == 3, f"Expected 3 chars, got {len(received_chars)}: {received_chars}"
+        assert 'A' in received_chars, "Should receive 'A'"
+        assert 'B' in received_chars, "Should receive 'B'"
+        assert 'C' in received_chars, "Should receive 'C'"
+
+    def test_uart_status_readable(self, monitor):
+        """Test that UART_STATUS at $C001 is readable."""
+        # Read UART_STATUS register
+        status = monitor.examine('C001')
+        
+        assert status is not None, "Should be able to read UART_STATUS"
+        assert len(status) == 2, "Status should be 2-digit hex"
+        
+        # Convert to int and check bit 0 (TX ready) is set
+        status_val = int(status, 16)
+        tx_ready = status_val & 0x01
+        
+        # TX should be ready (not busy) most of the time
+        # This isn't guaranteed but very likely
+        assert tx_ready == 1, f"TX ready bit should be set, status=0x{status}"
