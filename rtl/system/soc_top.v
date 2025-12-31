@@ -31,6 +31,10 @@ module soc_top (
     output wire lcd_rw,            // D16: LCD Read/Write
     output wire lcd_e,             // D18: LCD Enable
 
+    // PS/2 Keyboard
+    input  wire ps2_clk,           // PS/2 keyboard clock
+    input  wire ps2_data,          // PS/2 keyboard data
+
     // Debug LEDs
     output wire [3:0] led          // Status LEDs
 );
@@ -205,6 +209,32 @@ module soc_top (
     );
 
     // ========================================================================
+    // PS/2 Keyboard Controller
+    // ========================================================================
+
+    wire [7:0] ps2_data_out;
+    wire ps2_rd = (cpu_io_op == 2'b10) && (cpu_mc == 3'b111);
+
+    ps2_wrapper #(
+        .CLK_FREQ_HZ(25000000)  // 25 MHz system clock
+    ) ps2_inst (
+        .clk(clk_25mhz),
+        .reset(system_rst),
+        .ps2_clk(ps2_clk),
+        .ps2_data(ps2_data),
+        .cs(ps2_cs),
+        .rd(ps2_cs && ps2_rd),  // Read at MC=7
+        .addr(cpu_addr[0]),     // A0 selects DATA (0) or STATUS (1)
+        .data_out(ps2_data_out),
+        .irq(),                 // Not connected yet (no interrupt support)
+        .debug_valid(),         // Could connect to LED
+        .debug_fifo_empty(),
+        .debug_count(),
+        .debug_ps2_clk_deb(),
+        .debug_ps2_data_deb()
+    );
+
+    // ========================================================================
     // Data Bus Multiplexer (Registered)
     // ========================================================================
     // Register the data bus to break combinational loops.
@@ -220,6 +250,7 @@ module soc_top (
             rom_monitor_cs: cpu_data_in_mux = rom_monitor_data_out;
             uart_cs:        cpu_data_in_mux = uart_data_out;
             lcd_cs:         cpu_data_in_mux = lcd_data_out;
+            ps2_cs:         cpu_data_in_mux = ps2_data_out;
             default:        cpu_data_in_mux = 8'hFF;  // Unmapped reads return $FF
         endcase
     end

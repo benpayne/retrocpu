@@ -35,6 +35,9 @@ RTL_SOURCES = \
 	$(RTL_DIR)/peripherals/lcd/lcd_controller.v \
 	$(RTL_DIR)/peripherals/lcd/lcd_timing.v \
 	$(RTL_DIR)/peripherals/lcd/lcd_init_fsm.v \
+	$(RTL_DIR)/peripherals/ps2/ps2_wrapper.v \
+	$(RTL_DIR)/peripherals/ps2/ps2-controller-lib/rtl/ps2_decoder_core.v \
+	$(RTL_DIR)/peripherals/ps2/ps2-controller-lib/rtl/debounce.v \
 	$(RTL_DIR)/system/$(TOP).v
 
 # Arlet 6502 core (commented out - replaced by M65C02)

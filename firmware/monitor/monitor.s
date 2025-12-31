@@ -20,12 +20,16 @@ LCD_DATA    = $C100  ; LCD data register (write ASCII character)
 LCD_CMD     = $C101  ; LCD command register (write HD44780 command)
 LCD_STATUS  = $C102  ; LCD status register (bit 0 = busy flag)
 
+PS2_DATA    = $C200  ; PS/2 data register (read scan code)
+PS2_STATUS  = $C201  ; PS/2 status (bit 0 = data ready, bit 1 = interrupt)
+
 ; Zero page variables
 TEMP        = $00    ; Temporary storage
 TEMP2       = $01    ; Temporary storage 2
 ADDR_LO     = $02    ; 16-bit address low byte
 ADDR_HI     = $03    ; 16-bit address high byte
 VALUE       = $04    ; Byte value
+PS2_BREAK   = $05    ; PS/2 break code flag (1 = next code is break)
 INPUT_BUF   = $10    ; Input buffer start (16 bytes)
 INPUT_LEN   = $20    ; Input buffer length
 
@@ -48,6 +52,7 @@ RESET:
     ; Initialize zero page
     LDA #0
     STA INPUT_LEN
+    STA PS2_BREAK       ; Clear PS/2 break code flag
 
     ; Print welcome message
     JSR PRINT_WELCOME
@@ -442,18 +447,263 @@ CHROUT:
     RTS
 
 ; ============================================================================
-; CHRIN - Input character from UART
+; CHRIN - Input character from PS/2 keyboard or UART
+; Checks PS/2 first, then falls back to UART if no PS/2 data
 ; Output: A = character received
 ; Preserves: X, Y
 ; ============================================================================
 
 CHRIN:
-@WAIT_RX:
-    LDA UART_STATUS    ; Check RX ready
-    AND #$02           ; Bit 1 = RX ready
-    BEQ @WAIT_RX       ; Wait if no data available
+    ; Check PS/2 keyboard first
+    LDA PS2_STATUS      ; Check PS/2 data ready
+    AND #$01            ; Bit 0 = data ready
+    BEQ @TRY_UART       ; No PS/2 data, try UART
 
-    LDA UART_DATA      ; Read character (clears RX ready flag)
+    ; PS/2 has data - read scan code
+    LDA PS2_DATA        ; Read scan code from FIFO
+
+    ; Check for break code prefix (0xF0)
+    CMP #$F0
+    BNE @NOT_BREAK
+
+    ; This is a break code prefix - set flag and get next scan code
+    LDA #1
+    STA PS2_BREAK
+    JMP CHRIN           ; Recursively get next character
+
+@NOT_BREAK:
+    ; Check if this is a break code (key release)
+    PHA                 ; Save scan code
+    LDA PS2_BREAK
+    BNE @IS_BREAK
+
+    ; This is a make code (key press) - convert to ASCII
+    PLA                 ; Restore scan code
+    JSR PS2_TO_ASCII
+    RTS
+
+@IS_BREAK:
+    ; This is a break code (key release) - ignore and get next char
+    LDA #0
+    STA PS2_BREAK       ; Clear break flag
+    PLA                 ; Discard scan code
+    JMP CHRIN           ; Get next character
+
+@TRY_UART:
+    ; No PS/2 data - check UART
+    LDA UART_STATUS     ; Check RX ready
+    AND #$02            ; Bit 1 = RX ready
+    BEQ CHRIN           ; Loop until data from either source
+
+    LDA UART_DATA       ; Read character from UART
+    RTS
+
+; ============================================================================
+; PS2_TO_ASCII - Convert PS/2 scan code to ASCII
+; Input: A = PS/2 scan code (Set 2)
+; Output: A = ASCII character (or original scan code if no mapping)
+; Preserves: X, Y
+; ============================================================================
+
+PS2_TO_ASCII:
+    ; Common key mappings (PS/2 Set 2 scan codes)
+    CMP #$1C            ; 'A'
+    BNE @NOT_A
+    LDA #'A'
+    RTS
+@NOT_A:
+    CMP #$32            ; 'B'
+    BNE @NOT_B
+    LDA #'B'
+    RTS
+@NOT_B:
+    CMP #$21            ; 'C'
+    BNE @NOT_C
+    LDA #'C'
+    RTS
+@NOT_C:
+    CMP #$23            ; 'D'
+    BNE @NOT_D
+    LDA #'D'
+    RTS
+@NOT_D:
+    CMP #$24            ; 'E'
+    BNE @NOT_E
+    LDA #'E'
+    RTS
+@NOT_E:
+    CMP #$2B            ; 'F'
+    BNE @NOT_F
+    LDA #'F'
+    RTS
+@NOT_F:
+    CMP #$34            ; 'G'
+    BNE @NOT_G
+    LDA #'G'
+    RTS
+@NOT_G:
+    CMP #$33            ; 'H'
+    BNE @NOT_H
+    LDA #'H'
+    RTS
+@NOT_H:
+    CMP #$43            ; 'I'
+    BNE @NOT_I
+    LDA #'I'
+    RTS
+@NOT_I:
+    CMP #$3B            ; 'J'
+    BNE @NOT_J
+    LDA #'J'
+    RTS
+@NOT_J:
+    CMP #$42            ; 'K'
+    BNE @NOT_K
+    LDA #'K'
+    RTS
+@NOT_K:
+    CMP #$4B            ; 'L'
+    BNE @NOT_L
+    LDA #'L'
+    RTS
+@NOT_L:
+    CMP #$3A            ; 'M'
+    BNE @NOT_M
+    LDA #'M'
+    RTS
+@NOT_M:
+    CMP #$31            ; 'N'
+    BNE @NOT_N
+    LDA #'N'
+    RTS
+@NOT_N:
+    CMP #$44            ; 'O'
+    BNE @NOT_O
+    LDA #'O'
+    RTS
+@NOT_O:
+    CMP #$4D            ; 'P'
+    BNE @NOT_P
+    LDA #'P'
+    RTS
+@NOT_P:
+    CMP #$15            ; 'Q'
+    BNE @NOT_Q
+    LDA #'Q'
+    RTS
+@NOT_Q:
+    CMP #$2D            ; 'R'
+    BNE @NOT_R
+    LDA #'R'
+    RTS
+@NOT_R:
+    CMP #$1B            ; 'S'
+    BNE @NOT_S
+    LDA #'S'
+    RTS
+@NOT_S:
+    CMP #$2C            ; 'T'
+    BNE @NOT_T
+    LDA #'T'
+    RTS
+@NOT_T:
+    CMP #$3C            ; 'U'
+    BNE @NOT_U
+    LDA #'U'
+    RTS
+@NOT_U:
+    CMP #$2A            ; 'V'
+    BNE @NOT_V
+    LDA #'V'
+    RTS
+@NOT_V:
+    CMP #$1D            ; 'W'
+    BNE @NOT_W
+    LDA #'W'
+    RTS
+@NOT_W:
+    CMP #$22            ; 'X'
+    BNE @NOT_X
+    LDA #'X'
+    RTS
+@NOT_X:
+    CMP #$35            ; 'Y'
+    BNE @NOT_Y
+    LDA #'Y'
+    RTS
+@NOT_Y:
+    CMP #$1A            ; 'Z'
+    BNE @NOT_Z
+    LDA #'Z'
+    RTS
+@NOT_Z:
+
+    ; Numbers
+    CMP #$45            ; '0'
+    BNE @NOT_0
+    LDA #'0'
+    RTS
+@NOT_0:
+    CMP #$16            ; '1'
+    BNE @NOT_1
+    LDA #'1'
+    RTS
+@NOT_1:
+    CMP #$1E            ; '2'
+    BNE @NOT_2
+    LDA #'2'
+    RTS
+@NOT_2:
+    CMP #$26            ; '3'
+    BNE @NOT_3
+    LDA #'3'
+    RTS
+@NOT_3:
+    CMP #$25            ; '4'
+    BNE @NOT_4
+    LDA #'4'
+    RTS
+@NOT_4:
+    CMP #$2E            ; '5'
+    BNE @NOT_5
+    LDA #'5'
+    RTS
+@NOT_5:
+    CMP #$36            ; '6'
+    BNE @NOT_6
+    LDA #'6'
+    RTS
+@NOT_6:
+    CMP #$3D            ; '7'
+    BNE @NOT_7
+    LDA #'7'
+    RTS
+@NOT_7:
+    CMP #$3E            ; '8'
+    BNE @NOT_8
+    LDA #'8'
+    RTS
+@NOT_8:
+    CMP #$46            ; '9'
+    BNE @NOT_9
+    LDA #'9'
+    RTS
+@NOT_9:
+
+    ; Special keys
+    CMP #$29            ; Space
+    BNE @NOT_SPACE
+    LDA #' '
+    RTS
+@NOT_SPACE:
+    CMP #$5A            ; Enter
+    BNE @NOT_ENTER
+    LDA #$0D            ; Carriage return
+    RTS
+@NOT_ENTER:
+
+    ; Unknown key - return '?'
+    LDA #'?'
     RTS
 
 ; ============================================================================

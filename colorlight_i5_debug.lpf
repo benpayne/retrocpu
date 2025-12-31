@@ -33,6 +33,13 @@ IOBUF PORT "lcd_rs" IO_TYPE=LVCMOS33 DRIVE=4;
 IOBUF PORT "lcd_rw" IO_TYPE=LVCMOS33 DRIVE=4;
 IOBUF PORT "lcd_e" IO_TYPE=LVCMOS33 DRIVE=4;
 
+## PS/2 Keyboard (PMOD connector) ####################
+LOCATE COMP "ps2_clk" SITE "K5";   # PS/2 Clock
+LOCATE COMP "ps2_data" SITE "B3";  # PS/2 Data
+
+IOBUF PORT "ps2_clk" IO_TYPE=LVCMOS33 PULLMODE=UP;
+IOBUF PORT "ps2_data" IO_TYPE=LVCMOS33 PULLMODE=UP;
+
 ## Status LEDs ########################################
 LOCATE COMP "led[0]" SITE "N18"; # LED 1: System reset
 LOCATE COMP "led[1]" SITE "N17"; # LED 2: CPU clock (2 Hz blink)
