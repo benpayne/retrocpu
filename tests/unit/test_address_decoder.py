@@ -16,7 +16,6 @@ Per TDD: This test is written BEFORE the RTL implementation
 
 import cocotb
 from cocotb.triggers import Timer
-from cocotb.binary import BinaryValue
 
 
 @cocotb.test()

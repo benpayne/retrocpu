@@ -12,7 +12,6 @@ Per TDD: This test is written BEFORE the RTL implementation
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, FallingEdge, Timer
-from cocotb.binary import BinaryValue
 
 
 # UART timing constants

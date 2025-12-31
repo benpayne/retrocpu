@@ -8,7 +8,6 @@ Per TDD: This test is written BEFORE the RTL implementation
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
-from cocotb.binary import BinaryValue
 import random
 
 
