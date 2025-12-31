@@ -52,8 +52,7 @@ RESET:
     ; Print welcome message
     JSR PRINT_WELCOME
 
-    ; Initialize LCD and display boot message
-    JSR LCD_INIT
+    ; Display boot message on LCD (hardware init done automatically)
     JSR LCD_BOOT_MSG
 
     ; Fall through to main loop
@@ -510,10 +509,9 @@ LCD_INIT:
 
 LCD_DELAY:
     ; Nested delay loops for ~10-20ms at 25 MHz
-    ; Outer loop: 100 iterations
+    ; Outer loop: 255 iterations
     ; Inner loop: 255 iterations each
-    ; Total: ~100 * 255 * 3 cycles = ~76,500 cycles = ~3ms
-    ; We'll do this multiple times for longer delay
+    ; Total: ~255 * 255 * 3 cycles = ~195,000 cycles = ~8ms
 
     LDY #$FF       ; Outer loop counter
 @OUTER:
@@ -527,10 +525,17 @@ LCD_DELAY:
 
 ; ============================================================================
 ; LCD_BOOT_MSG - Display boot message on LCD
-; Uses: A, X
+; Uses: A, X, Y
 ; ============================================================================
 
 LCD_BOOT_MSG:
+    ; Wait for hardware initialization to complete (~20ms)
+    ; Multiple delay loops to ensure init_done
+    JSR LCD_DELAY
+    JSR LCD_DELAY
+    JSR LCD_DELAY
+    JSR LCD_DELAY
+
     ; Set cursor to home position (0x80)
     LDA #$80
     STA LCD_CMD
@@ -541,11 +546,30 @@ LCD_BOOT_MSG:
 @LINE1:
     LDA LCD_MSG_LINE1,X
     BEQ @LINE2_START
+
+    ; Debug: Send to UART also
+    PHA                ; Save A
+    JSR CHROUT         ; Print to UART
+    PLA                ; Restore A
+
     STA LCD_DATA
+
+    ; Save X before LCD_DELAY (which clobbers X)
+    TXA
+    PHA
     JSR LCD_DELAY
+    PLA
+    TAX
+
     INX
     CPX #16            ; Limit to 16 chars
     BNE @LINE1
+
+    ; Debug: Print newline to UART
+    LDA #$0D
+    JSR CHROUT
+    LDA #$0A
+    JSR CHROUT
 
 @LINE2_START:
     ; Set cursor to line 2, column 0 (0xC0)
@@ -558,11 +582,30 @@ LCD_BOOT_MSG:
 @LINE2:
     LDA LCD_MSG_LINE2,X
     BEQ @DONE
+
+    ; Debug: Send to UART also
+    PHA                ; Save A
+    JSR CHROUT         ; Print to UART
+    PLA                ; Restore A
+
     STA LCD_DATA
+
+    ; Save X before LCD_DELAY (which clobbers X)
+    TXA
+    PHA
     JSR LCD_DELAY
+    PLA
+    TAX
+
     INX
     CPX #16            ; Limit to 16 chars
     BNE @LINE2
+
+    ; Debug: Print newline to UART
+    LDA #$0D
+    JSR CHROUT
+    LDA #$0A
+    JSR CHROUT
 
 @DONE:
     RTS
