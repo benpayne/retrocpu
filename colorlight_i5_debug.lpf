@@ -16,6 +16,23 @@ IOBUF PORT "uart_tx" IO_TYPE=LVCMOS33 DRIVE=4;
 LOCATE COMP "uart_rx" SITE "H18";  # RX from USB bridge
 IOBUF PORT "uart_rx" IO_TYPE=LVCMOS33;
 
+## LCD Display (HD44780 4-bit mode, PMOD 5A) ##########
+LOCATE COMP "lcd_data[0]" SITE "E5";   # LCD D4
+LOCATE COMP "lcd_data[1]" SITE "F4";   # LCD D5
+LOCATE COMP "lcd_data[2]" SITE "F5";   # LCD D6
+LOCATE COMP "lcd_data[3]" SITE "E6";   # LCD D7
+LOCATE COMP "lcd_rs" SITE "G5";        # LCD RS (Register Select)
+LOCATE COMP "lcd_rw" SITE "D16";       # LCD RW (Read/Write)
+LOCATE COMP "lcd_e" SITE "D18";        # LCD E (Enable)
+
+IOBUF PORT "lcd_data[0]" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "lcd_data[1]" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "lcd_data[2]" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "lcd_data[3]" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "lcd_rs" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "lcd_rw" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "lcd_e" IO_TYPE=LVCMOS33 DRIVE=4;
+
 ## Status LEDs ########################################
 LOCATE COMP "led[0]" SITE "N18"; # LED 1: System reset
 LOCATE COMP "led[1]" SITE "N17"; # LED 2: CPU clock (2 Hz blink)

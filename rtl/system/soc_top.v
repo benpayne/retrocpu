@@ -25,6 +25,12 @@ module soc_top (
     output wire uart_tx,           // J17: UART TX to USB bridge
     input  wire uart_rx,           // K17: UART RX from USB bridge
 
+    // LCD (HD44780 4-bit mode)
+    output wire [3:0] lcd_data,    // E5,F4,F5,E6: LCD D4-D7
+    output wire lcd_rs,            // G5: LCD Register Select
+    output wire lcd_rw,            // D16: LCD Read/Write
+    output wire lcd_e,             // D18: LCD Enable
+
     // Debug LEDs
     output wire [3:0] led          // Status LEDs
 );
@@ -175,6 +181,30 @@ module soc_top (
     );
 
     // ========================================================================
+    // LCD Controller (HD44780 4-bit mode)
+    // ========================================================================
+
+    wire [7:0] lcd_data_out;
+
+    // M65C02: Read enable at MC=7 (when control signals are asserted)
+    wire lcd_rd = (cpu_io_op == 2'b10) && (cpu_mc == 3'b111);
+
+    lcd_controller lcd_inst (
+        .clk(clk_25mhz),
+        .rst(system_rst),
+        .cs(lcd_cs),
+        .we(lcd_cs && mem_we),  // Write when CPU executes write operation at MC=7
+        .rd(lcd_cs && lcd_rd),  // Read at MC=7
+        .addr(cpu_addr[7:0]),
+        .data_in(cpu_data_out),
+        .data_out(lcd_data_out),
+        .lcd_data(lcd_data),
+        .lcd_rs(lcd_rs),
+        .lcd_rw(lcd_rw),
+        .lcd_e(lcd_e)
+    );
+
+    // ========================================================================
     // Data Bus Multiplexer (Registered)
     // ========================================================================
     // Register the data bus to break combinational loops.
@@ -189,6 +219,7 @@ module soc_top (
             rom_basic_cs:   cpu_data_in_mux = rom_basic_data_out;
             rom_monitor_cs: cpu_data_in_mux = rom_monitor_data_out;
             uart_cs:        cpu_data_in_mux = uart_data_out;
+            lcd_cs:         cpu_data_in_mux = lcd_data_out;
             default:        cpu_data_in_mux = 8'hFF;  // Unmapped reads return $FF
         endcase
     end

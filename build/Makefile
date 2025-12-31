@@ -32,6 +32,9 @@ RTL_SOURCES = \
 	$(RTL_DIR)/peripherals/uart/uart.v \
 	$(RTL_DIR)/peripherals/uart/uart_tx.v \
 	$(RTL_DIR)/peripherals/uart/uart_rx.v \
+	$(RTL_DIR)/peripherals/lcd/lcd_controller.v \
+	$(RTL_DIR)/peripherals/lcd/lcd_timing.v \
+	$(RTL_DIR)/peripherals/lcd/lcd_init_fsm.v \
 	$(RTL_DIR)/system/$(TOP).v
 
 # Arlet 6502 core (commented out - replaced by M65C02)
