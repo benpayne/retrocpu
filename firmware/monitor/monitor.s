@@ -504,15 +504,25 @@ LCD_INIT:
     RTS
 
 ; ============================================================================
-; LCD_DELAY - Delay for LCD command to complete
-; Uses: X
+; LCD_DELAY - Delay for LCD command to complete (~10-20ms)
+; Uses: X, Y
 ; ============================================================================
 
 LCD_DELAY:
-    LDX #$FF
-@LOOP:
+    ; Nested delay loops for ~10-20ms at 25 MHz
+    ; Outer loop: 100 iterations
+    ; Inner loop: 255 iterations each
+    ; Total: ~100 * 255 * 3 cycles = ~76,500 cycles = ~3ms
+    ; We'll do this multiple times for longer delay
+
+    LDY #$FF       ; Outer loop counter
+@OUTER:
+    LDX #$FF       ; Inner loop counter
+@INNER:
     DEX
-    BNE @LOOP
+    BNE @INNER
+    DEY
+    BNE @OUTER
     RTS
 
 ; ============================================================================
