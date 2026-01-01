@@ -69,3 +69,23 @@ IOBUF PORT "seg_e" IO_TYPE=LVCMOS33 DRIVE=4;
 IOBUF PORT "seg_f" IO_TYPE=LVCMOS33 DRIVE=4;
 IOBUF PORT "seg_g" IO_TYPE=LVCMOS33 DRIVE=4;
 IOBUF PORT "seg_select" IO_TYPE=LVCMOS33 DRIVE=4;
+
+## DVI/HDMI Output ####################################
+# CRITICAL: LVCMOS33D (differential) is REQUIRED for proper TMDS signaling
+# Using LVCMOS33 (single-ended) will result in no signal detection
+
+# TMDS Data Channel 0 (Blue)
+LOCATE COMP "gpdi_dp[0]" SITE "G19";
+IOBUF PORT "gpdi_dp[0]" IO_TYPE=LVCMOS33D DRIVE=4;
+
+# TMDS Data Channel 1 (Green)
+LOCATE COMP "gpdi_dp[1]" SITE "E20";
+IOBUF PORT "gpdi_dp[1]" IO_TYPE=LVCMOS33D DRIVE=4;
+
+# TMDS Data Channel 2 (Red)
+LOCATE COMP "gpdi_dp[2]" SITE "C20";
+IOBUF PORT "gpdi_dp[2]" IO_TYPE=LVCMOS33D DRIVE=4;
+
+# TMDS Clock Channel
+LOCATE COMP "gpdi_dp[3]" SITE "J19";
+IOBUF PORT "gpdi_dp[3]" IO_TYPE=LVCMOS33D DRIVE=4;

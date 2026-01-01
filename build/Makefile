@@ -38,6 +38,16 @@ RTL_SOURCES = \
 	$(RTL_DIR)/peripherals/ps2/ps2_wrapper.v \
 	$(RTL_DIR)/peripherals/ps2/ps2-controller-lib/rtl/ps2_decoder_core.v \
 	$(RTL_DIR)/peripherals/ps2/ps2-controller-lib/rtl/debounce.v \
+	$(RTL_DIR)/system/ecp5_pll.sv \
+	$(RTL_DIR)/peripherals/video/gpu_top.v \
+	$(RTL_DIR)/peripherals/video/gpu_core.v \
+	$(RTL_DIR)/peripherals/video/gpu_registers.v \
+	$(RTL_DIR)/peripherals/video/character_buffer.v \
+	$(RTL_DIR)/peripherals/video/character_renderer.v \
+	$(RTL_DIR)/peripherals/video/font_rom.v \
+	$(RTL_DIR)/peripherals/video/vga_timing_generator.v \
+	$(RTL_DIR)/peripherals/video/dvi_transmitter.v \
+	$(RTL_DIR)/peripherals/video/tmds_encoder.v \
 	$(RTL_DIR)/system/$(TOP).v
 
 # Arlet 6502 core (commented out - replaced by M65C02)
@@ -125,8 +135,7 @@ synth: dirs
 	@echo "Running Yosys synthesis..."
 	$(YOSYS) $(YOSYS_FLAGS) -p \
 		"read_verilog -sv $(YOSYS_INCLUDE) $(RTL_SOURCES); \
-		 hierarchy -check -top $(TOP); \
-		 synth_ecp5 -noabc9 -top $(TOP) -json $(JSON)" \
+		 synth_ecp5 -top $(TOP) -json $(JSON)" \
 		2>&1 | tee $(SYNTH_DIR)/yosys.log
 	@echo "Synthesis complete: $(JSON)"
 

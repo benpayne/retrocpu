@@ -62,10 +62,12 @@ module gpu_top(
     input  wire        we,              // Write enable
     input  wire        re,              // Read enable
 
-    // TMDS output (DDR differential pairs for LVDS)
-    // Note: Only positive signals declared - LVCMOS33D mode auto-generates negatives
-    // DDR serialization handled by ODDRX1F primitives below
-    output wire [3:0]  gpdi_dp    // TMDS outputs: [3]=clk, [2]=red, [1]=green, [0]=blue
+    // TMDS parallel output (2-bit DDR data for each channel)
+    // These will be fed to ODDRX1F primitives at the top level
+    output wire [1:0]  tmds_clk_out,   // TMDS clock channel DDR data
+    output wire [1:0]  tmds_red_out,   // TMDS red channel DDR data
+    output wire [1:0]  tmds_green_out, // TMDS green channel DDR data
+    output wire [1:0]  tmds_blue_out   // TMDS blue channel DDR data
 );
 
     //==========================================================================
@@ -152,47 +154,15 @@ module gpu_top(
     );
 
     //==========================================================================
-    // DDR Output Primitives - TMDS Serialization
+    // Output Assignments - TMDS Parallel Data
     //==========================================================================
-    // ECP5 ODDRX1F primitives serialize 2-bit parallel data to single-bit DDR output
-    // D0 = data for falling edge, D1 = data for rising edge, SCLK = TMDS clock
-    // Note: Only positive outputs - LVCMOS33D mode auto-generates inverted negatives
+    // Connect internal TMDS signals to output ports
+    // DDR serialization will be performed at the top level (soc_top.v)
 
-    // TMDS Clock output
-    ODDRX1F ddr_clk (
-        .D0(tmds_clk[0]),
-        .D1(tmds_clk[1]),
-        .Q(gpdi_dp[3]),
-        .SCLK(clk_tmds),
-        .RST(1'b0)
-    );
-
-    // TMDS Red output
-    ODDRX1F ddr_red (
-        .D0(tmds_red[0]),
-        .D1(tmds_red[1]),
-        .Q(gpdi_dp[2]),
-        .SCLK(clk_tmds),
-        .RST(1'b0)
-    );
-
-    // TMDS Green output
-    ODDRX1F ddr_green (
-        .D0(tmds_green[0]),
-        .D1(tmds_green[1]),
-        .Q(gpdi_dp[1]),
-        .SCLK(clk_tmds),
-        .RST(1'b0)
-    );
-
-    // TMDS Blue output
-    ODDRX1F ddr_blue (
-        .D0(tmds_blue[0]),
-        .D1(tmds_blue[1]),
-        .Q(gpdi_dp[0]),
-        .SCLK(clk_tmds),
-        .RST(1'b0)
-    );
+    assign tmds_clk_out   = tmds_clk;
+    assign tmds_red_out   = tmds_red;
+    assign tmds_green_out = tmds_green;
+    assign tmds_blue_out  = tmds_blue;
 
     //==========================================================================
     // Notes on Signal Conversion

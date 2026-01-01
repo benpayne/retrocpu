@@ -78,9 +78,12 @@ module character_renderer(
     // Pipeline Stage 1: Calculate Character Position and Address
     //==========================================================================
 
-    // Pre-fetch characters 3 pixels ahead to account for pipeline delays
-    // This ensures we have the correct pixel data when we need to output it
-    wire [9:0] h_fetch = h_count + 10'd3;
+    // Pipeline delay compensation:
+    // - Character buffer read: 1 cycle
+    // - Font ROM read: 1 cycle
+    // - h_count_d2 delay: 2 cycles
+    // Both data and position align after 2 cycles, so no prefetch offset needed
+    wire [9:0] h_fetch = h_count;
 
     // Calculate character column based on display mode
     // 40-col: Each character is 16 pixels wide (char_col = h_fetch / 16)
