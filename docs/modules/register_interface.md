@@ -1,351 +1,456 @@
 # GPU Register Interface
 
-**Memory-Mapped I/O Interface for DVI Character Display GPU**
+**Module**: GPU Memory-Mapped Registers
+**Base Address**: 0xC010
+**Date**: 2026-01-01
+**Status**: Implemented and Hardware Validated
+
+## Overview
+
+The GPU is accessed via 7 memory-mapped registers at 0xC010-0xC016. The CPU can write characters, control the cursor, configure colors, and read status through these registers.
 
 ## Memory Map
 
-The GPU occupies 7 consecutive bytes in the memory map:
+| Address | Name | Access | Width | Description |
+|---------|------|--------|-------|-------------|
+| 0xC010 | CHAR_DATA | W | 8-bit | Character data - write ASCII to display |
+| 0xC011 | CURSOR_ROW | R/W | 5-bit | Cursor row position (0-29) |
+| 0xC012 | CURSOR_COL | R/W | 7-bit | Cursor column position (0-79) |
+| 0xC013 | CONTROL | W | 8-bit | Control register (clear, mode, cursor enable) |
+| 0xC014 | FG_COLOR | R/W | 3-bit | Foreground color (3-bit RGB) |
+| 0xC015 | BG_COLOR | R/W | 3-bit | Background color (3-bit RGB) |
+| 0xC016 | STATUS | R | 8-bit | GPU status flags |
 
-| Address | Register Name | Access | Description |
-|---------|--------------|--------|-------------|
-| 0xC010 | CHAR_DATA | Write | Character data register - write ASCII character to current cursor position |
-| 0xC011 | STATUS | Read | Status register - GPU state and busy flags |
-| 0xC012 | CONTROL | Write | Control register - commands and mode selection |
-| 0xC013 | CURSOR_X | Read/Write | Cursor X position (column) |
-| 0xC014 | CURSOR_Y | Read/Write | Cursor Y position (row) |
-| 0xC015 | FG_COLOR | Write | Foreground color (3-bit RGB) |
-| 0xC016 | BG_COLOR | Write | Background color (3-bit RGB) |
+## Register Details
 
-**Address Range**: 0xC010 - 0xC016 (7 bytes)
+### 0xC010: CHAR_DATA (Write-Only)
 
-## Register Descriptions
-
-### CHAR_DATA (0xC010) - Write Only
-
-Writes an ASCII character to the current cursor position and automatically advances the cursor.
-
-**Bit Layout**:
-```
-Bit:  7   6   5   4   3   2   1   0
-     [ ASCII Character Code 0x00-0xFF ]
-```
+Writes an ASCII character to the character buffer at the current cursor position.
 
 **Behavior**:
-1. Character is written to character buffer at (CURSOR_Y, CURSOR_X)
-2. CURSOR_X is incremented by 1
-3. If CURSOR_X >= max_columns (40 or 80), wrap to next line:
-   - CURSOR_X = 0
-   - CURSOR_Y = CURSOR_Y + 1
-4. If CURSOR_Y >= 30, scroll screen up by one line:
-   - All lines move up one position
-   - Bottom line is cleared (filled with spaces)
-   - CURSOR_Y = 29
+1. ASCII code written to buffer at `(CURSOR_ROW * 80) + CURSOR_COL`
+2. Cursor automatically advances to next position
+3. At end of row (column 79), cursor wraps to column 0 of next row
+4. **Future**: At end of screen (row 29, col 79), screen will scroll up
 
-**Character Codes**:
-- 0x20-0x7E: Printable ASCII characters
-- 0x00-0x1F, 0x7F: Non-printable - display placeholder glyph
-- 0x80-0xFF: Extended ASCII - display placeholder glyph
-
-**Timing**: Write completes in 1 system clock cycle. Character appears on screen within 1 frame (16.7ms).
-
----
-
-### STATUS (0xC011) - Read Only
-
-Reports GPU status and operational state.
-
-**Bit Layout**:
-```
-Bit:  7   6   5   4   3   2   1   0
-     [ RESERVED  ]  │  │  │  │  │  └─ BUSY (0=ready, 1=busy)
-                    │  │  │  │  └──── FRAME_SYNC (1=vsync active)
-                    │  │  │  └─────── MODE (0=40col, 1=80col)
-                    │  │  └────────── CURSOR_EN (0=disabled, 1=enabled)
-                    │  └───────────── CURSOR_VIS (0=invisible phase, 1=visible phase)
-                    └──────────────── RESERVED
+**Example**:
+```asm
+; Write 'H' to screen
+LDA #$48       ; ASCII 'H'
+STA $C010      ; Write to CHAR_DATA - cursor advances automatically
 ```
 
-**Bit Descriptions**:
-- **Bit 0 (BUSY)**: Indicates GPU is processing a command
-  - 0 = Ready for next command
-  - 1 = Busy (typically only during screen clear or scroll operations)
-- **Bit 1 (FRAME_SYNC)**: Vertical sync indicator
-  - 1 = Currently in vsync period
-  - Can be used for frame timing
-- **Bit 2 (MODE)**: Current display mode
-  - 0 = 40-column mode
-  - 1 = 80-column mode
-- **Bit 3 (CURSOR_EN)**: Cursor enable state
-  - 0 = Cursor disabled
-  - 1 = Cursor enabled
-- **Bit 4 (CURSOR_VIS)**: Cursor flash state
-  - 0 = Cursor in invisible phase
-  - 1 = Cursor in visible phase
-  - Toggles at ~1Hz when cursor enabled
-- **Bits 5-7**: Reserved for future use (read as 0)
+**Timing**: Character appears on display within 1-2 frames (16-33 ms @ 60 Hz)
 
----
+### 0xC011: CURSOR_ROW (Read/Write)
 
-### CONTROL (0xC012) - Write Only
+Sets or reads the cursor row position.
 
-Issues commands and configures display mode.
+**Width**: 5 bits (values 0-29, upper 3 bits ignored)
+**Default**: 0 (top row)
 
-**Bit Layout**:
-```
-Bit:  7   6   5   4   3   2   1   0
-     [ RESERVED  ]  │  │  │  │  │  └─ CLEAR (1=clear screen)
-                    │  │  │  │  └──── MODE (0=40col, 1=80col)
-                    │  │  │  └─────── CURSOR_EN (0=disable, 1=enable)
-                    │  │  └────────── RESERVED
-                    │  └───────────── RESERVED
-                    └──────────────── RESERVED
+**Write Behavior**:
+- Values 0-29: Set cursor to specified row
+- Values 30-31: Clamped to row 29
+
+**Read Behavior**:
+- Returns current cursor row (0-29)
+
+**Example**:
+```asm
+; Move cursor to row 5
+LDA #5
+STA $C011      ; CURSOR_ROW = 5
+
+; Read current row
+LDA $C011      ; A now contains cursor row
 ```
 
-**Commands**:
-- **Bit 0 (CLEAR)**: Clear screen command
-  - Write 1 to clear entire screen to current background color
-  - All character positions filled with spaces (0x20)
-  - Cursor reset to (0, 0)
-  - Auto-clears after execution (reads as 0)
+### 0xC012: CURSOR_COL (Read/Write)
 
-- **Bit 1 (MODE)**: Display mode select
-  - 0 = 40-column mode (40x30 characters)
-  - 1 = 80-column mode (80x30 characters)
-  - **Mode switch behavior**: Writing a different mode value:
-    1. Clears screen
-    2. Resets cursor to (0, 0)
-    3. Applies new mode
+Sets or reads the cursor column position.
 
-- **Bit 2 (CURSOR_EN)**: Cursor enable/disable
-  - 0 = Cursor not displayed
-  - 1 = Cursor displayed and flashing at ~1Hz
+**Width**: 7 bits (values 0-79 in 80-col mode, upper bit ignored)
+**Default**: 0 (leftmost column)
 
-**Usage Example**:
-```assembly
+**Write Behavior**:
+- Values 0-79: Set cursor to specified column (80-col mode)
+- Values 0-39: Valid range in 40-col mode
+- Values out of range: Clamped to max column
+
+**Read Behavior**:
+- Returns current cursor column (0-79)
+
+**Example**:
+```asm
+; Move cursor to column 10
+LDA #10
+STA $C012      ; CURSOR_COL = 10
+
+; Move to position (row=2, col=15)
+LDA #2
+STA $C011      ; Row = 2
+LDA #15
+STA $C012      ; Col = 15
+```
+
+### 0xC013: CONTROL (Write-Only)
+
+Control register for GPU operations.
+
+**Bit Map**:
+
+| Bit | Name | Description |
+|-----|------|-------------|
+| 0 | CLEAR | Clear screen (write 1 to clear, auto-clears after) |
+| 1 | MODE_80COL | Display mode: 0=40-column, 1=80-column (future) |
+| 2 | CURSOR_EN | Cursor enable: 0=hidden, 1=visible (future) |
+| 3-7 | Reserved | Reserved for future use |
+
+#### Bit 0: CLEAR
+
+Writing 1 clears the entire screen (fills buffer with spaces, resets cursor to 0,0).
+
+**Example**:
+```asm
+; Clear screen
+LDA #$01       ; Bit 0 = 1
+STA $C013      ; Clear screen
+```
+
+**Timing**: Clear operation completes within a few microseconds. New frame displays cleared screen within 16 ms.
+
+#### Bit 1: MODE_80COL (Future Feature)
+
+Controls display mode selection. **Note**: Currently only 80-column mode is active.
+
+- 0 = 40-column mode (40×30, characters doubled horizontally)
+- 1 = 80-column mode (80×30, native character width) **[CURRENT]**
+
+**Future behavior**: Switching modes will automatically clear screen and reset cursor.
+
+#### Bit 2: CURSOR_EN (Future Feature)
+
+Controls cursor visibility. **Note**: Cursor display not yet implemented.
+
+- 0 = Cursor hidden
+- 1 = Cursor visible (flashing block at cursor position)
+
+### 0xC014: FG_COLOR (Read/Write)
+
+Foreground (text) color in 3-bit RGB format.
+
+**Width**: 3 bits (bits 0-2), upper 5 bits ignored
+**Default**: 0x07 (white)
+
+**Bit Map**:
+
+| Bit | Color | Value |
+|-----|-------|-------|
+| 2 | Red | 1=on, 0=off |
+| 1 | Green | 1=on, 0=off |
+| 0 | Blue | 1=on, 0=off |
+
+**Color Palette**:
+
+| Value | Binary | Color Name |
+|-------|--------|------------|
+| 0x00 | 000 | Black |
+| 0x01 | 001 | Blue |
+| 0x02 | 010 | Green |
+| 0x03 | 011 | Cyan |
+| 0x04 | 100 | Red |
+| 0x05 | 101 | Magenta |
+| 0x06 | 110 | Yellow |
+| 0x07 | 111 | White |
+
+**Example**:
+```asm
+; Set foreground to yellow (red + green)
+LDA #$06       ; Binary 110
+STA $C014      ; FG_COLOR = yellow
+```
+
+### 0xC015: BG_COLOR (Read/Write)
+
+Background color in 3-bit RGB format.
+
+**Width**: 3 bits (bits 0-2), upper 5 bits ignored
+**Default**: 0x01 (blue)
+
+**Format**: Same as FG_COLOR (3-bit RGB)
+
+**Example**:
+```asm
+; Set background to blue
+LDA #$01       ; Binary 001
+STA $C015      ; BG_COLOR = blue
+
+; White text on black background
+LDA #$07       ; White
+STA $C014      ; FG_COLOR = white
+LDA #$00       ; Black
+STA $C015      ; BG_COLOR = black
+```
+
+### 0xC016: STATUS (Read-Only)
+
+GPU status register. **Note**: Currently returns fixed value 0xC0.
+
+**Bit Map**:
+
+| Bit | Name | Description |
+|-----|------|-------------|
+| 7 | GPU_READY | 1 = GPU initialized and ready |
+| 6 | PLL_LOCK | 1 = GPU PLL locked (stable clocks) |
+| 5 | Reserved | Future: VBLANK flag |
+| 4 | Reserved | Future: HBLANK flag |
+| 3-0 | Reserved | Reserved for future use |
+
+**Example**:
+```asm
+; Check if GPU is ready
+LDA $C016      ; Read STATUS
+AND #$80       ; Test bit 7
+BEQ not_ready  ; Branch if not set
+; GPU is ready...
+```
+
+## Usage Examples
+
+### Example 1: Clear Screen and Write "HELLO"
+
+```asm
 ; Clear screen
 LDA #$01
-STA $C012
+STA $C013      ; Clear
 
-; Switch to 80-column mode (will clear screen automatically)
-LDA #$02
-STA $C012
+; Set cursor to (0, 0) - redundant after clear, but explicit
+LDA #$00
+STA $C011      ; Row = 0
+STA $C012      ; Col = 0
 
-; Enable cursor
-LDA #$04
-STA $C012
-
-; Enable cursor AND 80-column mode
-LDA #$06
-STA $C012
+; Write "HELLO"
+LDA #$48
+STA $C010      ; 'H'
+LDA #$45
+STA $C010      ; 'E'
+LDA #$4C
+STA $C010      ; 'L'
+STA $C010      ; 'L'
+LDA #$4F
+STA $C010      ; 'O'
 ```
 
----
+### Example 2: Write String at Specific Position
 
-### CURSOR_X (0xC013) - Read/Write
+```asm
+; Position cursor at row 5, column 10
+LDA #5
+STA $C011      ; CURSOR_ROW
+LDA #10
+STA $C012      ; CURSOR_COL
 
-Current cursor X position (column).
-
-**Bit Layout**:
-```
-Bit:  7   6   5   4   3   2   1   0
-     [ Column Position 0-79 ]
-```
-
-**Range**:
-- 40-column mode: 0-39 (values 40-255 clamped to 39)
-- 80-column mode: 0-79 (values 80-255 clamped to 79)
-
-**Behavior**:
-- **Write**: Sets cursor column position
-  - Out-of-range values are clamped to max valid column
-  - Takes effect immediately for next character write
-- **Read**: Returns current column position
-
----
-
-### CURSOR_Y (0xC014) - Read/Write
-
-Current cursor Y position (row).
-
-**Bit Layout**:
-```
-Bit:  7   6   5   4   3   2   1   0
-     [ Row Position 0-29 ]
+; Write "CPU OK"
+LDA #$43
+STA $C010      ; 'C'
+LDA #$50
+STA $C010      ; 'P'
+LDA #$55
+STA $C010      ; 'U'
+LDA #$20
+STA $C010      ; ' '
+LDA #$4F
+STA $C010      ; 'O'
+LDA #$4B
+STA $C010      ; 'K'
 ```
 
-**Range**: 0-29 (values 30-255 clamped to 29)
+### Example 3: Set Colors
 
-**Behavior**:
-- **Write**: Sets cursor row position
-  - Out-of-range values are clamped to 29
-  - Takes effect immediately for next character write
-- **Read**: Returns current row position
+```asm
+; Yellow text on blue background
+LDA #$06       ; Yellow (red + green)
+STA $C014      ; FG_COLOR
+LDA #$01       ; Blue
+STA $C015      ; BG_COLOR
 
----
-
-### FG_COLOR (0xC015) - Write Only
-
-Foreground color for subsequently written characters.
-
-**Bit Layout**:
-```
-Bit:  7   6   5   4   3   2   1   0
-     [ MASKED ]  │  │  └─ R (Red bit)
-                 │  └──── G (Green bit)
-                 └─────── B (Blue bit)
+; Now write characters...
+LDA #$48
+STA $C010      ; 'H' in yellow on blue
 ```
 
-**Color Values** (3-bit RGB):
-| Value | Color | RGB |
-|-------|-------|-----|
-| 0x00 | Black | (0,0,0) |
-| 0x01 | Blue | (0,0,1) |
-| 0x02 | Green | (0,1,0) |
-| 0x03 | Cyan | (0,1,1) |
-| 0x04 | Red | (1,0,0) |
-| 0x05 | Magenta | (1,0,1) |
-| 0x06 | Yellow | (1,1,0) |
-| 0x07 | White | (1,1,1) |
+### Example 4: String Write Loop
 
-**Behavior**:
-- Only bits 0-2 are used
-- Bits 3-7 are masked and ignored
-- Color applies to all subsequently written characters
-- Does NOT affect existing characters on screen
-- Default on reset: 0x07 (White)
+```asm
+; Write string with pointer
+string: .byte "RetroCPU 6502", $00
 
----
-
-### BG_COLOR (0xC016) - Write Only
-
-Background color for subsequently written characters and screen clear operations.
-
-**Bit Layout**: Same as FG_COLOR
-
-**Behavior**:
-- Only bits 0-2 are used
-- Bits 3-7 are masked and ignored
-- Color applies to:
-  - Background of subsequently written characters
-  - Fill color for screen clear operations
-  - Background of scrolled-in lines
-- Does NOT affect existing characters on screen
-- Default on reset: 0x00 (Black)
-
----
-
-## Usage Patterns
-
-### Write a String
-
-```assembly
-; Write "HELLO" at current position
-        LDA #$48        ; 'H'
-        STA $C010
-        LDA #$45        ; 'E'
-        STA $C010
-        LDA #$4C        ; 'L'
-        STA $C010
-        LDA #$4C        ; 'L'
-        STA $C010
-        LDA #$4F        ; 'O'
-        STA $C010
+        LDX #0
+loop:   LDA string,X
+        BEQ done       ; End if null terminator
+        STA $C010      ; Write character
+        INX
+        BNE loop       ; Continue if X != 0
+done:   RTS
 ```
 
-### Clear Screen
+## Python API Example
 
-```assembly
-        LDA #$01        ; Clear command
-        STA $C012       ; Write to CONTROL
+Using the monitor D command via serial:
+
+```python
+import serial
+import time
+
+ser = serial.Serial("/dev/ttyACM0", 9600, timeout=1)
+
+def write_char(addr, value):
+    """Write to GPU register using monitor D command"""
+    cmd = f"D {addr:04X} {value:02X}\r"
+    ser.write(cmd.encode())
+    time.sleep(0.02)
+
+# Clear screen
+write_char(0xC013, 0x01)
+
+# Set white on blue
+write_char(0xC014, 0x07)  # White foreground
+write_char(0xC015, 0x01)  # Blue background
+
+# Write "HELLO"
+write_char(0xC010, ord('H'))
+write_char(0xC010, ord('E'))
+write_char(0xC010, ord('L'))
+write_char(0xC010, ord('L'))
+write_char(0xC010, ord('O'))
 ```
 
-### Position Cursor and Write
+## Bus Timing
 
-```assembly
-        LDA #$05        ; Row 5
-        STA $C014       ; Set CURSOR_Y
-        LDA #$10        ; Column 16
-        STA $C013       ; Set CURSOR_X
-        LDA #$41        ; 'A'
-        STA $C010       ; Write character
+### Write Timing
+
+The GPU registers are mapped to the CPU memory bus and use the M65C02 microcycle timing:
+
+```
+Microcycle 0-6: Address and data setup
+Microcycle 7:   Write strobe (WE asserted)
+                GPU samples data on rising edge of clk_cpu at MC=7
 ```
 
-### Change Colors
+### Read Timing
 
-```assembly
-        LDA #$04        ; Red
-        STA $C015       ; Set foreground
-        LDA #$01        ; Blue
-        STA $C016       ; Set background
-        ; Next characters will be red on blue
 ```
-
-### Switch to 80-Column Mode
-
-```assembly
-        LDA #$02        ; MODE bit set
-        STA $C012       ; Switch mode (auto-clears screen)
+Microcycle 0-6: Address setup
+Microcycle 7:   GPU drives data bus
+                CPU samples on rising edge at MC=7
 ```
-
----
 
 ## Clock Domain Crossing
 
-**Important**: Register writes occur in the CPU clock domain (TBD, likely 1-25 MHz), while the GPU operates in the pixel clock domain (25.175 MHz).
+The registers operate in the CPU clock domain (25 MHz) and provide data to the pixel clock domain (25 MHz). Although nominally the same frequency, these clocks are asynchronous (from different PLLs).
 
-**CDC Strategy**:
-- All CPU writes to registers are synchronized to pixel clock domain using two-flop synchronizers
-- STATUS reads are sampled from pixel clock domain signals
-- Synchronization adds 2-3 pixel clock cycles of latency (~100ns)
-- This latency is imperceptible for character writes and cursor updates
+**Synchronization strategy**:
+- Color registers (FG_COLOR, BG_COLOR): Direct async read (stable values, glitches acceptable for 1 pixel)
+- Cursor position: Direct async read (stable values between writes)
+- Character buffer: Dual-port RAM handles CDC automatically (separate read/write ports)
 
-**Implications**:
-- No CPU wait states needed for register access
-- Character writes appear on screen within 1 frame (~16.7ms)
-- Status reads may be delayed by 2-3 pixel clocks (~100ns)
+## CPU-GPU Performance
 
----
+### Write Performance
 
-## Performance Characteristics
+- **Character write latency**: ~40 ns (1 CPU clock cycle)
+- **Maximum write rate**: 25 million characters/second (far exceeds display rate)
+- **Practical write rate**: Limited by software loop overhead (~100k chars/sec typical)
 
-**Character Write Rate**:
-- Maximum throughput: Limited by CPU speed, not GPU
-- Recommended: <1000 characters/second for smooth display
-- GPU can handle burst writes up to CPU clock rate
+### Display Update Latency
 
-**Clear Screen Time**:
-- 40-column mode: ~38,400 pixel clocks (~1.5ms)
-- 80-column mode: ~76,800 pixel clocks (~3ms)
-- During clear, STATUS.BUSY = 1
+- **Frame time**: 16.67 ms (60 Hz)
+- **Character-to-display latency**: 0-16.67 ms (depends on when in frame written)
+- **Worst case**: Character written just after scanline rendered, visible next frame
 
-**Cursor Update**:
-- Position updates: Immediate (next frame)
-- Flash rate: ~1Hz (0.5s visible, 0.5s invisible)
+## Hardware Implementation
 
----
+### Module Hierarchy
 
-## Edge Cases and Special Behaviors
+```
+gpu_top.v
+├── gpu_core.v
+│   ├── gpu_registers.v (this interface)
+│   ├── character_buffer.v
+│   ├── character_renderer.v
+│   └── font_rom.v
+├── vga_timing_generator.v
+└── dvi_transmitter.v
+```
 
-### Invisible Text
-If FG_COLOR = BG_COLOR, text becomes invisible but system continues to function normally.
+### Address Decoder Integration
 
-### Rapid Writes
-Writing characters faster than display refresh (~60Hz) works correctly - characters are buffered in character RAM and displayed continuously.
+In `address_decoder.v`:
 
-### Mode Switch Mid-Screen
-Switching modes via CONTROL clears the screen automatically, so partial content is never displayed in wrong mode.
+```verilog
+// GPU chip select: 0xC010-0xC01F
+wire gpu_cs = (addr[15:4] == 12'hC01);
+```
 
-### Cursor During Clear
-Screen clear resets cursor to (0,0) and resets flash timer, so cursor appears in visible phase immediately after clear.
+The lower 4 bits (addr[3:0]) select the specific register within the GPU.
 
-### Non-Printable Characters
-Writing 0x00-0x1F, 0x7F, or 0x80-0xFF displays a solid block placeholder glyph, allowing debug visibility of any character code.
+### Register File
 
----
+In `gpu_registers.v`:
 
-## See Also
+```verilog
+// Register addresses (lower 4 bits of address)
+localparam ADDR_CHAR_DATA  = 4'h0;  // 0xC010
+localparam ADDR_CURSOR_ROW = 4'h1;  // 0xC011
+localparam ADDR_CURSOR_COL = 4'h2;  // 0xC012
+localparam ADDR_CONTROL    = 4'h3;  // 0xC013
+localparam ADDR_FG_COLOR   = 4'h4;  // 0xC014
+localparam ADDR_BG_COLOR   = 4'h5;  // 0xC015
+localparam ADDR_STATUS     = 4'h6;  // 0xC016
+```
 
-- [Character Rendering Pipeline](character_rendering.md)
-- [DVI Timing](dvi_timing.md)
-- [Clock Domain Crossing](../timing/clock_domains.md)
-- [VGA Timing Specification](../timing/vga_640x480_60hz.md)
+## Future Enhancements
+
+### Phase 5: Screen Control (Planned)
+
+- **Auto-scroll**: When cursor reaches (29, 79), scroll screen up one line
+- **CONTROL register expansion**: Full support for MODE_80COL and CURSOR_EN bits
+
+### Phase 6: Additional Features (Planned)
+
+- **Hardware cursor**: Flashing block cursor at current position (~1 Hz blink rate)
+- **40-column mode**: Larger characters for easier reading (16 pixels wide)
+- **Line wrap control**: Option to disable auto-advance
+
+### Status Register Expansion (Future)
+
+- **Bit 5 (VBLANK)**: 1 during vertical blanking (safe time for bulk updates)
+- **Bit 4 (HBLANK)**: 1 during horizontal blanking
+- **Bit 3 (SCROLL_BUSY)**: 1 while auto-scroll in progress
+
+## Validation Status
+
+### Hardware Tested
+
+- ✅ CHAR_DATA writes characters correctly
+- ✅ CURSOR_ROW/COL position cursor
+- ✅ CONTROL[0] clears screen
+- ✅ FG_COLOR/BG_COLOR set display colors
+- ✅ STATUS returns 0xC0 (GPU ready)
+- ✅ Auto-advance after CHAR_DATA write
+- ✅ Python monitor scripts working
+
+### Pending Features
+
+- ⏳ Auto-scroll at screen bottom
+- ⏳ 40-column mode switching
+- ⏳ Hardware cursor display
+- ⏳ VBLANK/HBLANK status flags
+
+## References
+
+- Character rendering pipeline: `docs/modules/character_rendering.md`
+- GPU specification: `specs/003-hdmi-character-display/spec.md`
+- Hardware validation: `tests/integration/test_gpu_character_output.py`
+- Python examples: `temp/test_gpu_demo.py`
