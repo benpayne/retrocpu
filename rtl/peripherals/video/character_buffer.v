@@ -30,13 +30,13 @@
 module character_buffer(
     // CPU write port (system clock domain)
     input  wire        clk_cpu,
-    input  wire [10:0] addr_write,      // Address 0-1199 (40-col) or 0-2399 (80-col)
+    input  wire [11:0] addr_write,      // Address 0-1199 (40-col) or 0-2399 (80-col)
     input  wire [7:0]  data_write,      // Character code to write
     input  wire        we,              // Write enable
 
     // Video read port (pixel clock domain)
     input  wire        clk_video,
-    input  wire [10:0] addr_read,       // Read address
+    input  wire [11:0] addr_read,       // Read address
     output reg  [7:0]  data_read        // Character code read
 );
 

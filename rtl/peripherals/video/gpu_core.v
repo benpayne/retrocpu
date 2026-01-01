@@ -102,12 +102,12 @@ module gpu_core(
     //==========================================================================
 
     // CPU write port (from gpu_registers, clk_cpu domain)
-    wire [10:0] char_buf_wr_addr;       // Write address (0-2399)
+    wire [11:0] char_buf_wr_addr;       // Write address (0-2399)
     wire [7:0]  char_buf_wr_data;       // Write data (character code)
     wire        char_buf_we;            // Write enable
 
     // Video read port (from character_renderer, clk_pixel domain)
-    wire [10:0] char_buf_rd_addr;       // Read address (0-2399)
+    wire [11:0] char_buf_rd_addr;       // Read address (0-2399)
     wire [7:0]  char_buf_rd_data;       // Read data (character code)
 
     //==========================================================================

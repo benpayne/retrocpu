@@ -68,7 +68,7 @@ module gpu_registers(
     input  wire        vsync,           // Vertical sync signal
 
     // Character buffer write interface
-    output reg  [10:0] char_buf_addr,   // Address to write in character buffer
+    output reg  [11:0] char_buf_addr,   // Address to write in character buffer
     output reg  [7:0]  char_buf_data,   // Character data to write
     output reg         char_buf_we      // Write enable to character buffer
 );
@@ -95,9 +95,9 @@ module gpu_registers(
 
     // Calculate character buffer address from cursor position
     // Address = row * columns + col
-    wire [10:0] cursor_buffer_addr = mode_80col ?
-                                     ({6'b0, cursor_row} * 11'd80) + {4'b0, cursor_col} :
-                                     ({6'b0, cursor_row} * 11'd40) + {4'b0, cursor_col};
+    wire [11:0] cursor_buffer_addr = mode_80col ?
+                                     ({7'b0, cursor_row} * 12'd80) + {5'b0, cursor_col} :
+                                     ({7'b0, cursor_row} * 12'd40) + {5'b0, cursor_col};
 
     // Reset and register write logic
     always @(posedge clk or negedge rst_n) begin
@@ -112,7 +112,7 @@ module gpu_registers(
             clear_screen    <= 1'b0;
             scroll_screen   <= 1'b0;
             char_buf_we     <= 1'b0;
-            char_buf_addr   <= 11'd0;
+            char_buf_addr   <= 12'd0;
             char_buf_data   <= 8'd0;
             mode_80col_prev <= 1'b0;
         end else begin

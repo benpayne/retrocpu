@@ -60,7 +60,7 @@ module character_renderer(
     input  wire [2:0]  bg_color,        // Background color (3-bit RGB)
 
     // Character buffer interface
-    output wire [10:0] char_addr,       // Address to character buffer
+    output wire [11:0] char_addr,       // Address to character buffer
     input  wire [7:0]  char_data,       // Character code from buffer
 
     // Font ROM interface
@@ -101,8 +101,8 @@ module character_renderer(
     // Calculate character buffer address
     // 40-col: address = row * 40 + col = row * 32 + row * 8 + col
     // 80-col: address = row * 80 + col = row * 64 + row * 16 + col
-    wire [10:0] char_addr_40 = {char_row, 5'b0} + {char_row, 3'b0} + {5'b0, char_col_40};
-    wire [10:0] char_addr_80 = {char_row, 6'b0} + {char_row, 4'b0} + {4'b0, char_col_80};
+    wire [11:0] char_addr_40 = {char_row, 5'b0} + {char_row, 3'b0} + {5'b0, char_col_40};
+    wire [11:0] char_addr_80 = {char_row, 6'b0} + {char_row, 4'b0} + {4'b0, char_col_80};
 
     // Select character address based on mode
     assign char_addr = mode_80col ? char_addr_80 : char_addr_40;
