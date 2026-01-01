@@ -92,6 +92,7 @@ module gpu_core(
     wire [2:0] bg_color;                // Background color (3-bit RGB)
     wire       clear_screen;            // Screen clear command pulse
     wire       scroll_screen;           // Screen scroll command pulse
+    wire [4:0] top_line;                // Circular buffer: which physical line is at screen row 0
 
     // GPU status signals (to registers)
     wire       gpu_ready;               // GPU ready for commands (always 1)
@@ -174,6 +175,7 @@ module gpu_core(
         .bg_color      (bg_color),       // Background color
         .clear_screen  (clear_screen),   // Clear screen command
         .scroll_screen (scroll_screen),  // Scroll screen command
+        .top_line      (top_line),       // Circular buffer top line
 
         // Status inputs
         .gpu_ready     (gpu_ready),      // GPU ready status
@@ -230,6 +232,7 @@ module gpu_core(
         .mode_80col    (mode_80col),     // Display mode
         .fg_color      (fg_color),       // Foreground color (3-bit RGB)
         .bg_color      (bg_color),       // Background color (3-bit RGB)
+        .top_line      (top_line),       // Circular buffer top line offset
 
         // Character buffer interface (read port)
         .char_addr     (char_buf_rd_addr), // Address to character buffer

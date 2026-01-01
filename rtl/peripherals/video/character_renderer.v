@@ -58,6 +58,7 @@ module character_renderer(
     input  wire        mode_80col,      // 0=40-column, 1=80-column
     input  wire [2:0]  fg_color,        // Foreground color (3-bit RGB)
     input  wire [2:0]  bg_color,        // Background color (3-bit RGB)
+    input  wire [4:0]  top_line,        // Circular buffer: physical line at screen row 0
 
     // Character buffer interface
     output wire [11:0] char_addr,       // Address to character buffer
@@ -95,14 +96,19 @@ module character_renderer(
     wire [6:0] char_col = mode_80col ? char_col_80 : {1'b0, char_col_40};
 
     // Calculate character row (same for both modes)
-    // Each character is 16 pixels tall (char_row = v_count / 16)
-    wire [4:0] char_row = v_count[9:4];  // Divide by 16 (shift right 4 bits)
+    // Each character is 16 pixels tall (screen_row = v_count / 16)
+    wire [4:0] screen_row = v_count[9:4];  // Divide by 16 (shift right 4 bits)
 
-    // Calculate character buffer address
+    // Calculate physical row in circular buffer
+    // physical_row = (screen_row + top_line) % 30
+    wire [5:0] row_sum = {1'b0, screen_row} + {1'b0, top_line};  // 6-bit to handle overflow
+    wire [4:0] physical_row = (row_sum >= 6'd30) ? (row_sum - 6'd30) : row_sum[4:0];
+
+    // Calculate character buffer address using physical row
     // 40-col: address = row * 40 + col = row * 32 + row * 8 + col
     // 80-col: address = row * 80 + col = row * 64 + row * 16 + col
-    wire [11:0] char_addr_40 = {char_row, 5'b0} + {char_row, 3'b0} + {5'b0, char_col_40};
-    wire [11:0] char_addr_80 = {char_row, 6'b0} + {char_row, 4'b0} + {4'b0, char_col_80};
+    wire [11:0] char_addr_40 = {physical_row, 5'b0} + {physical_row, 3'b0} + {5'b0, char_col_40};
+    wire [11:0] char_addr_80 = {physical_row, 6'b0} + {physical_row, 4'b0} + {4'b0, char_col_80};
 
     // Select character address based on mode
     assign char_addr = mode_80col ? char_addr_80 : char_addr_40;
