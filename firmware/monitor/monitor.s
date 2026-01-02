@@ -1,20 +1,36 @@
 ; ============================================================================
-; RetroCPU Monitor Program
+; RetroCPU Monitor Program - Feature 004: Program Loader and I/O Config
 ; 6502 Assembly Language
 ;
-; Simple monitor with commands: E (examine), D (deposit), H (help), G (go)
-; Uses inline argument format: "E 0200" or "D 0200 42"
-; Outputs via UART at $C000
+; Commands:
+;   E - Examine memory
+;   D - Deposit value
+;   G - Go to BASIC
+;   H - Help
+;   L - Load binary via XMODEM
+;   I - Configure I/O sources
+;   S - Status display
+;
+; Phases 1-4 Implementation:
+;   - Enhanced CHRIN/CHROUT with I/O mode switching
+;   - XMODEM binary upload protocol
+;   - PS/2 keyboard support with translation table
+;   - I/O configuration and status commands
 ; ============================================================================
 
 .setcpu "6502"
 
 ; ============================================================================
-; Memory Map
+; Memory Map - Peripherals
 ; ============================================================================
 
 UART_DATA   = $C000  ; UART data register (R/W)
 UART_STATUS = $C001  ; UART status (bit 0 = TX ready, bit 1 = RX ready)
+
+GPU_CHAR_DATA = $C010  ; GPU character data register (write ASCII character)
+GPU_CURSOR_COL = $C011 ; GPU cursor column (read/write)
+GPU_CURSOR_ROW = $C012 ; GPU cursor row (read/write)
+GPU_MODE = $C013       ; GPU control register (bit 1 = mode, bit 2 = cursor enable)
 
 LCD_DATA    = $C100  ; LCD data register (write ASCII character)
 LCD_CMD     = $C101  ; LCD command register (write HD44780 command)
@@ -23,15 +39,74 @@ LCD_STATUS  = $C102  ; LCD status register (bit 0 = busy flag)
 PS2_DATA    = $C200  ; PS/2 data register (read scan code)
 PS2_STATUS  = $C201  ; PS/2 status (bit 0 = data ready, bit 1 = interrupt)
 
-; Zero page variables
+; ============================================================================
+; Zero Page Variables - Phase 1 & 2
+; ============================================================================
+
+; Base variables
 TEMP        = $00    ; Temporary storage
 TEMP2       = $01    ; Temporary storage 2
 ADDR_LO     = $02    ; 16-bit address low byte
 ADDR_HI     = $03    ; 16-bit address high byte
 VALUE       = $04    ; Byte value
 PS2_BREAK   = $05    ; PS/2 break code flag (1 = next code is break)
+GPU_MODE_VAR = $06   ; Current GPU mode (0=40-col, 1=80-col)
+
+; Reserved for future use
+RESERVED_07 = $07
+RESERVED_08 = $08
+RESERVED_09 = $09
+RESERVED_0A = $0A
+RESERVED_0B = $0B
+RESERVED_0C = $0C
+RESERVED_0D = $0D
+RESERVED_0E = $0E
+RESERVED_0F = $0F
+
 INPUT_BUF   = $10    ; Input buffer start (16 bytes)
 INPUT_LEN   = $20    ; Input buffer length
+
+; I/O Configuration (Phase 2)
+IO_INPUT_MODE  = $21  ; Input mode: 0=UART, 1=PS2, 2=Both
+IO_OUTPUT_MODE = $22  ; Output mode: 0=UART, 1=Display, 2=Both
+
+; XMODEM State Variables (Phase 3)
+XMODEM_STATE     = $23  ; XMODEM state machine state
+XMODEM_PKT_NUM   = $24  ; Expected packet number
+XMODEM_RETRY     = $25  ; Retry counter
+XMODEM_CHECKSUM  = $26  ; Calculated checksum
+XMODEM_ADDR_LO   = $27  ; Current write address low
+XMODEM_ADDR_HI   = $28  ; Current write address high
+XMODEM_BYTE_CNT  = $29  ; Byte counter in current packet
+
+; PS/2 Translation State (Phase 4)
+PS2_SHIFT   = $2A    ; Shift key state (0 = not pressed, 1 = pressed)
+PS2_CAPS    = $2B    ; Caps Lock state (0 = off, 1 = on)
+
+; ============================================================================
+; RAM Buffers - Phase 1 & 2
+; ============================================================================
+
+XMODEM_BUFFER = $0200  ; 128-byte XMODEM packet buffer
+PS2_XLAT_TABLE = $0280 ; 128-byte PS/2 scancode to ASCII lookup table
+
+; ============================================================================
+; XMODEM Protocol Constants
+; ============================================================================
+
+SOH = $01    ; Start of header
+EOT = $04    ; End of transmission
+ACK = $06    ; Acknowledge
+NAK = $15    ; Negative acknowledge
+CAN = $18    ; Cancel
+
+; XMODEM State Machine States
+XMODEM_IDLE       = $00
+XMODEM_WAIT_SOH   = $01
+XMODEM_RECV_PKT   = $02
+XMODEM_RECV_DATA  = $03
+XMODEM_VERIFY     = $04
+XMODEM_COMPLETE   = $05
 
 ; ============================================================================
 ; ROM starts at $E000
@@ -52,7 +127,31 @@ RESET:
     ; Initialize zero page
     LDA #0
     STA INPUT_LEN
-    STA PS2_BREAK       ; Clear PS/2 break code flag
+    STA PS2_BREAK
+    STA PS2_SHIFT
+    STA PS2_CAPS
+
+    ; Initialize I/O configuration to UART-only (Phase 2 - T005)
+    STA IO_INPUT_MODE   ; 0 = UART input only
+    STA IO_OUTPUT_MODE  ; 0 = UART output only
+
+    ; Initialize GPU mode to 80-column (default)
+    LDA #1
+    STA GPU_MODE_VAR    ; 1 = 80-column mode
+
+    ; Set GPU hardware to 80-column mode with cursor enabled
+    ; Bit 1 = MODE (1=80-col), Bit 2 = CURSOR_EN (1=enabled)
+    LDA #%00000110      ; MODE=1, CURSOR_EN=1
+    STA GPU_MODE
+
+    LDA #0              ; Clear A for subsequent initializations
+
+    ; Initialize XMODEM state
+    STA XMODEM_STATE
+    STA XMODEM_PKT_NUM
+
+    ; Initialize PS/2 lookup table (Phase 2 - T009)
+    JSR INIT_PS2_TABLE
 
     ; Print welcome message
     JSR PRINT_WELCOME
@@ -89,7 +188,7 @@ MAIN_LOOP:
     LDA #$0A
     JSR CHROUT
 
-    ; Parse command
+    ; Parse command (Phase 2 - T010: added L, I, S commands)
     LDA TEMP           ; Restore command character
     CMP #'E'           ; Examine command
     BNE @TRY_E_LOWER
@@ -123,8 +222,44 @@ MAIN_LOOP:
     JMP CMD_HELP
 @TRY_H_LOWER:
     CMP #'h'
-    BNE @UNKNOWN
+    BNE @TRY_L
     JMP CMD_HELP
+
+@TRY_L:
+    CMP #'L'           ; Load binary via XMODEM
+    BNE @TRY_L_LOWER
+    JMP CMD_LOAD
+@TRY_L_LOWER:
+    CMP #'l'
+    BNE @TRY_M
+    JMP CMD_LOAD
+
+@TRY_M:
+    CMP #'M'           ; Mode (40/80 column)
+    BNE @TRY_M_LOWER
+    JMP CMD_MODE
+@TRY_M_LOWER:
+    CMP #'m'
+    BNE @TRY_I
+    JMP CMD_MODE
+
+@TRY_I:
+    CMP #'I'           ; I/O configuration
+    BNE @TRY_I_LOWER
+    JMP CMD_IO_CONFIG
+@TRY_I_LOWER:
+    CMP #'i'
+    BNE @TRY_S
+    JMP CMD_IO_CONFIG
+
+@TRY_S:
+    CMP #'S'           ; Status display
+    BNE @TRY_S_LOWER
+    JMP CMD_STATUS
+@TRY_S_LOWER:
+    CMP #'s'
+    BNE @UNKNOWN
+    JMP CMD_STATUS
 
     ; Unknown command
 @UNKNOWN:
@@ -276,15 +411,605 @@ CMD_GO:
 ; CMD_HELP - Display help
 ; ============================================================================
 CMD_HELP:
-    LDX #0
+    ; Set up pointer to HELP_MSG in zero page
+    LDA #<HELP_MSG
+    STA TEMP
+    LDA #>HELP_MSG
+    STA TEMP2
+
+    LDY #0
 @H_LOOP:
-    LDA HELP_MSG,X
+    LDA (TEMP),Y
     BEQ @DONE_HELP
     JSR CHROUT
-    INX
+    INY
     BNE @H_LOOP
+    ; Y wrapped to 0, increment high byte of pointer
+    INC TEMP2
+    JMP @H_LOOP
 @DONE_HELP:
     JMP MAIN_LOOP
+
+; ============================================================================
+; CMD_LOAD - Load binary program via XMODEM (Phase 3 - T015-T022)
+; Format: L
+; Receives binary data via XMODEM protocol and stores to RAM
+; ============================================================================
+CMD_LOAD:
+    ; Print ready message
+    LDX #0
+@READY_LOOP:
+    LDA LOAD_READY_MSG,X
+    BEQ @START_XMODEM
+    JSR CHROUT
+    INX
+    BNE @READY_LOOP
+
+@START_XMODEM:
+    ; Initialize XMODEM state
+    LDA #$0300 & $FF       ; Start address $0300 (after buffers)
+    STA XMODEM_ADDR_LO
+    LDA #$0300 >> 8
+    STA XMODEM_ADDR_HI
+
+    LDA #1
+    STA XMODEM_PKT_NUM     ; Start with packet 1
+
+    LDA #0
+    STA XMODEM_RETRY       ; Clear retry counter
+
+    ; Call XMODEM receive function
+    JSR XMODEM_RECEIVE
+
+    ; Check result (A = 0 for success, non-zero for error)
+    BEQ @SUCCESS
+
+    ; Error occurred
+    LDX #0
+@ERR_LOOP:
+    LDA LOAD_ERROR_MSG,X
+    BEQ @DONE
+    JSR CHROUT
+    INX
+    BNE @ERR_LOOP
+    JMP @DONE
+
+@SUCCESS:
+    ; Print success message
+    LDX #0
+@SUCCESS_LOOP:
+    LDA LOAD_SUCCESS_MSG,X
+    BEQ @DONE
+    JSR CHROUT
+    INX
+    BNE @SUCCESS_LOOP
+
+@DONE:
+    JMP MAIN_LOOP
+
+; ============================================================================
+; XMODEM_RECEIVE - Receive binary data via XMODEM protocol
+; Phase 3 - T016-T021
+; Output: A = 0 for success, non-zero for error
+; ============================================================================
+XMODEM_RECEIVE:
+    ; Send initial NAK to start transfer
+    LDA #NAK
+    JSR UART_SEND
+
+@WAIT_PKT:
+    ; Wait for SOH or EOT
+    JSR CHRIN_TIMEOUT
+    BCS @GOTO_TIMEOUT
+
+    ; Check for EOT (end of transmission)
+    CMP #EOT
+    BNE @CHECK_SOH
+
+    ; EOT received - send ACK and complete
+    LDA #ACK
+    JSR UART_SEND
+    LDA #0              ; Success
+    RTS
+
+@GOTO_TIMEOUT:
+    JMP @TIMEOUT
+
+@CHECK_SOH:
+    ; Check for SOH (start of header)
+    CMP #SOH
+    BNE @GOTO_BAD_HEADER
+
+@GOTO_BAD_HEADER:
+    JMP @BAD_HEADER
+
+    ; Receive packet number
+    JSR CHRIN_TIMEOUT
+    BCS @GOTO_TIMEOUT
+    CMP XMODEM_PKT_NUM
+    BNE @GOTO_BAD_PKT
+    STA TEMP            ; Save packet number
+
+    ; Receive packet number complement
+    JSR CHRIN_TIMEOUT
+    BCS @GOTO_TIMEOUT
+    EOR #$FF
+    CMP TEMP
+    BNE @GOTO_BAD_PKT
+
+    ; Receive 128 data bytes
+    LDY #0
+    LDA #0
+    STA XMODEM_CHECKSUM  ; Initialize checksum
+
+@RECV_DATA:
+    JSR CHRIN_TIMEOUT
+    BCS @GOTO_TIMEOUT
+    STA XMODEM_BUFFER,Y
+
+    ; Add to checksum
+    CLC
+    ADC XMODEM_CHECKSUM
+    STA XMODEM_CHECKSUM
+
+    INY
+    CPY #128
+    BNE @RECV_DATA
+
+    ; Receive checksum
+    JSR CHRIN_TIMEOUT
+    BCS @GOTO_TIMEOUT
+    CMP XMODEM_CHECKSUM
+    BNE @GOTO_BAD_CHKSUM
+
+@GOTO_BAD_PKT:
+    JMP @BAD_PKT_NUM
+
+@GOTO_BAD_CHKSUM:
+    JMP @BAD_CHECKSUM
+
+    ; Checksum good - copy data to target address
+    LDY #0
+@COPY_DATA:
+    LDA XMODEM_BUFFER,Y
+    STA (XMODEM_ADDR_LO),Y
+    INY
+    CPY #128
+    BNE @COPY_DATA
+
+    ; Advance target address by 128
+    CLC
+    LDA XMODEM_ADDR_LO
+    ADC #128
+    STA XMODEM_ADDR_LO
+    LDA XMODEM_ADDR_HI
+    ADC #0
+    STA XMODEM_ADDR_HI
+
+    ; Increment packet number
+    INC XMODEM_PKT_NUM
+
+    ; Send ACK
+    LDA #ACK
+    JSR UART_SEND
+
+    ; Reset retry counter
+    LDA #0
+    STA XMODEM_RETRY
+
+    JMP @WAIT_PKT
+
+@BAD_HEADER:
+@BAD_PKT_NUM:
+@BAD_CHECKSUM:
+    ; Send NAK
+    LDA #NAK
+    JSR UART_SEND
+
+    ; Increment retry counter
+    INC XMODEM_RETRY
+    LDA XMODEM_RETRY
+    CMP #10
+    BCC @RETRY_OK
+
+    ; Too many retries - abort
+    LDA #CAN
+    JSR UART_SEND
+    LDA #1              ; Error
+    RTS
+
+@RETRY_OK:
+    JMP @WAIT_PKT
+
+@TIMEOUT:
+    ; Timeout - send NAK and retry
+    LDA #NAK
+    JSR UART_SEND
+
+    INC XMODEM_RETRY
+    LDA XMODEM_RETRY
+    CMP #10
+    BCC @RETRY_OK2
+
+    ; Too many retries - abort
+    LDA #CAN
+    JSR UART_SEND
+    LDA #1              ; Error
+    RTS
+
+@RETRY_OK2:
+    JMP @WAIT_PKT
+
+; ============================================================================
+; CMD_IO_CONFIG - Configure I/O sources (Phase 4 - T030)
+; Format: I <input_mode> <output_mode>
+; Input modes: 0=UART, 1=PS2, 2=Both
+; Output modes: 0=UART, 1=Display, 2=Both
+; ============================================================================
+CMD_IO_CONFIG:
+    ; Skip spaces
+    JSR SKIP_SPACES
+
+    ; Read input mode digit
+    LDA TEMP
+    SEC
+    SBC #'0'
+    BCS @CHECK_INPUT_RANGE
+    JMP @INVALID_INPUT
+
+@CHECK_INPUT_RANGE:
+    CMP #3
+    BCS @INVALID_INPUT
+    STA IO_INPUT_MODE
+
+    ; Skip spaces
+    JSR SKIP_SPACES
+
+    ; Read output mode digit
+    LDA TEMP
+    SEC
+    SBC #'0'
+    BCS @CHECK_OUTPUT_RANGE
+    JMP @INVALID_OUTPUT
+
+@CHECK_OUTPUT_RANGE:
+    CMP #3
+    BCS @INVALID_OUTPUT
+    STA IO_OUTPUT_MODE
+
+    ; Print confirmation
+    JSR PRINT_IO_CONFIG_CONFIRM
+    JMP MAIN_LOOP
+
+@INVALID_INPUT:
+    LDX #0
+@INVALID_INPUT_LOOP:
+    LDA INVALID_INPUT_MSG,X
+    BEQ @DONE_INVALID
+    JSR CHROUT
+    INX
+    BNE @INVALID_INPUT_LOOP
+@DONE_INVALID:
+    JMP MAIN_LOOP
+
+@INVALID_OUTPUT:
+    LDX #0
+@INVALID_OUTPUT_LOOP:
+    LDA INVALID_OUTPUT_MSG,X
+    BEQ @DONE_INVALID2
+    JSR CHROUT
+    INX
+    BNE @INVALID_OUTPUT_LOOP
+@DONE_INVALID2:
+    JMP MAIN_LOOP
+
+; ============================================================================
+; CMD_STATUS - Display I/O status (Phase 4 - T053-T057)
+; Format: S
+; ============================================================================
+CMD_STATUS:
+    LDX #0
+@STATUS_LOOP:
+    LDA STATUS_MSG,X
+    BEQ @SHOW_INPUT
+    JSR CHROUT
+    INX
+    BNE @STATUS_LOOP
+
+@SHOW_INPUT:
+    ; Display input mode
+    LDX #0
+@INPUT_LABEL:
+    LDA STATUS_INPUT_LABEL,X
+    BEQ @INPUT_VALUE
+    JSR CHROUT
+    INX
+    BNE @INPUT_LABEL
+
+@INPUT_VALUE:
+    LDA IO_INPUT_MODE
+    BEQ @INPUT_UART
+    CMP #1
+    BEQ @INPUT_PS2
+
+    ; Mode 2 - Both
+    LDX #0
+@INPUT_BOTH:
+    LDA STATUS_BOTH,X
+    BEQ @SHOW_OUTPUT
+    JSR CHROUT
+    INX
+    BNE @INPUT_BOTH
+    JMP @SHOW_OUTPUT
+
+@INPUT_UART:
+    LDX #0
+@INPUT_UART_LOOP:
+    LDA STATUS_UART,X
+    BEQ @SHOW_OUTPUT
+    JSR CHROUT
+    INX
+    BNE @INPUT_UART_LOOP
+    JMP @SHOW_OUTPUT
+
+@INPUT_PS2:
+    LDX #0
+@INPUT_PS2_LOOP:
+    LDA STATUS_PS2,X
+    BEQ @SHOW_OUTPUT
+    JSR CHROUT
+    INX
+    BNE @INPUT_PS2_LOOP
+
+@SHOW_OUTPUT:
+    ; Display output mode
+    LDX #0
+@OUTPUT_LABEL:
+    LDA STATUS_OUTPUT_LABEL,X
+    BEQ @OUTPUT_VALUE
+    JSR CHROUT
+    INX
+    BNE @OUTPUT_LABEL
+
+@OUTPUT_VALUE:
+    LDA IO_OUTPUT_MODE
+    BEQ @OUTPUT_UART
+    CMP #1
+    BEQ @OUTPUT_DISPLAY
+
+    ; Mode 2 - Both
+    LDX #0
+@OUTPUT_BOTH:
+    LDA STATUS_BOTH,X
+    BEQ @STATUS_DONE
+    JSR CHROUT
+    INX
+    BNE @OUTPUT_BOTH
+    JMP @STATUS_DONE
+
+@OUTPUT_UART:
+    LDX #0
+@OUTPUT_UART_LOOP:
+    LDA STATUS_UART,X
+    BEQ @STATUS_DONE
+    JSR CHROUT
+    INX
+    BNE @OUTPUT_UART_LOOP
+    JMP @STATUS_DONE
+
+@OUTPUT_DISPLAY:
+    LDX #0
+@OUTPUT_DISPLAY_LOOP:
+    LDA STATUS_DISPLAY,X
+    BEQ @STATUS_DONE
+    JSR CHROUT
+    INX
+    BNE @OUTPUT_DISPLAY_LOOP
+
+@STATUS_DONE:
+    LDA #$0D
+    JSR CHROUT
+    LDA #$0A
+    JSR CHROUT
+    JMP MAIN_LOOP
+
+; ============================================================================
+; CMD_MODE - Set display mode (40 or 80 column)
+; Format: M 0 (40-column) or M 1 (80-column)
+; ============================================================================
+CMD_MODE:
+    ; Skip spaces
+    JSR SKIP_SPACES
+
+    ; Check if we have a parameter (SKIP_SPACES puts char in TEMP)
+    LDA TEMP
+    CMP #$0D           ; End of input?
+    BEQ @SHOW_CURRENT  ; No parameter, show current mode
+
+    ; Convert from ASCII digit to value
+    SEC
+    SBC #'0'
+    BCC @ERROR         ; Invalid if less than '0'
+
+    ; Value is in A, check if 0 or 1
+    CMP #2
+    BCS @ERROR         ; Must be 0 or 1
+
+    ; Save new mode
+    STA GPU_MODE_VAR
+
+    ; Write to GPU CONTROL register
+    ; Bit 1 = MODE (0=40-col, 1=80-col)
+    ; Bit 2 = CURSOR_EN (keep enabled = 1)
+    ASL A              ; Shift mode into bit 1
+    ORA #%00000100     ; Set CURSOR_EN bit (bit 2)
+    STA GPU_MODE
+
+    ; Print confirmation
+    LDX #0
+@MODE_MSG:
+    LDA MODE_SET_MSG,X
+    BEQ @DONE_MODE
+    JSR CHROUT
+    INX
+    BNE @MODE_MSG
+@DONE_MODE:
+    JMP MAIN_LOOP
+
+@SHOW_CURRENT:
+    ; Show current mode
+    LDX #0
+@CURRENT_MSG:
+    LDA MODE_CURRENT_MSG,X
+    BEQ @SHOW_VALUE
+    JSR CHROUT
+    INX
+    BNE @CURRENT_MSG
+
+@SHOW_VALUE:
+    LDA GPU_MODE_VAR
+    BEQ @MODE_40
+
+    ; 80-column mode
+    LDX #0
+@MODE_80_LOOP:
+    LDA MODE_80_MSG,X
+    BEQ @DONE_SHOW
+    JSR CHROUT
+    INX
+    BNE @MODE_80_LOOP
+    JMP @DONE_SHOW
+
+@MODE_40:
+    ; 40-column mode
+    LDX #0
+@MODE_40_LOOP:
+    LDA MODE_40_MSG,X
+    BEQ @DONE_SHOW
+    JSR CHROUT
+    INX
+    BNE @MODE_40_LOOP
+
+@DONE_SHOW:
+    LDA #$0D
+    JSR CHROUT
+    LDA #$0A
+    JSR CHROUT
+    JMP MAIN_LOOP
+
+@ERROR:
+    LDX #0
+@ERROR_LOOP:
+    LDA MODE_ERROR_MSG,X
+    BEQ @ERROR_DONE
+    JSR CHROUT
+    INX
+    BNE @ERROR_LOOP
+@ERROR_DONE:
+    JMP MAIN_LOOP
+
+; ============================================================================
+; PRINT_IO_CONFIG_CONFIRM - Print I/O configuration confirmation
+; Phase 4 - Uses IO_INPUT_MODE and IO_OUTPUT_MODE
+; ============================================================================
+PRINT_IO_CONFIG_CONFIRM:
+    ; Print "I/O Config: IN="
+    LDX #0
+@PREFIX_LOOP:
+    LDA CONFIG_PREFIX,X
+    BEQ @PRINT_INPUT
+    JSR CHROUT
+    INX
+    BNE @PREFIX_LOOP
+
+@PRINT_INPUT:
+    ; Print input mode name
+    LDA IO_INPUT_MODE
+    BEQ @INPUT_UART
+    CMP #1
+    BEQ @INPUT_PS2
+
+    ; Mode 2 - Both
+    LDX #0
+@INPUT_BOTH:
+    LDA CONFIG_BOTH,X
+    BEQ @PRINT_MID
+    JSR CHROUT
+    INX
+    BNE @INPUT_BOTH
+    JMP @PRINT_MID
+
+@INPUT_UART:
+    LDX #0
+@INPUT_UART_LOOP:
+    LDA CONFIG_UART,X
+    BEQ @PRINT_MID
+    JSR CHROUT
+    INX
+    BNE @INPUT_UART_LOOP
+    JMP @PRINT_MID
+
+@INPUT_PS2:
+    LDX #0
+@INPUT_PS2_LOOP:
+    LDA CONFIG_PS2,X
+    BEQ @PRINT_MID
+    JSR CHROUT
+    INX
+    BNE @INPUT_PS2_LOOP
+
+@PRINT_MID:
+    ; Print ", OUT="
+    LDX #0
+@MID_LOOP:
+    LDA CONFIG_MID,X
+    BEQ @PRINT_OUTPUT
+    JSR CHROUT
+    INX
+    BNE @MID_LOOP
+
+@PRINT_OUTPUT:
+    ; Print output mode name
+    LDA IO_OUTPUT_MODE
+    BEQ @OUTPUT_UART
+    CMP #1
+    BEQ @OUTPUT_DISPLAY
+
+    ; Mode 2 - Both
+    LDX #0
+@OUTPUT_BOTH:
+    LDA CONFIG_BOTH,X
+    BEQ @PRINT_NEWLINE
+    JSR CHROUT
+    INX
+    BNE @OUTPUT_BOTH
+    JMP @PRINT_NEWLINE
+
+@OUTPUT_UART:
+    LDX #0
+@OUTPUT_UART_LOOP:
+    LDA CONFIG_UART,X
+    BEQ @PRINT_NEWLINE
+    JSR CHROUT
+    INX
+    BNE @OUTPUT_UART_LOOP
+    JMP @PRINT_NEWLINE
+
+@OUTPUT_DISPLAY:
+    LDX #0
+@OUTPUT_DISPLAY_LOOP:
+    LDA CONFIG_DISPLAY,X
+    BEQ @PRINT_NEWLINE
+    JSR CHROUT
+    INX
+    BNE @OUTPUT_DISPLAY_LOOP
+
+@PRINT_NEWLINE:
+    LDA #$0D
+    JSR CHROUT
+    LDA #$0A
+    JSR CHROUT
+    RTS
 
 ; ============================================================================
 ; SKIP_SPACES - Skip whitespace characters
@@ -429,295 +1154,285 @@ READ_HEX_WORD:
     RTS
 
 ; ============================================================================
-; CHROUT - Output character to UART
-; Input: A = character to output
+; UART_SEND - Send byte to UART (Phase 2 - T008)
+; Input: A = byte to send
 ; Preserves: X, Y
 ; ============================================================================
-
-CHROUT:
+UART_SEND:
     PHA                ; Save A
-
-@WAIT_TX:
+@WAIT:
     LDA UART_STATUS    ; Check TX ready
     AND #$01           ; Bit 0 = TX ready
-    BEQ @WAIT_TX       ; Wait if not ready
-
+    BEQ @WAIT          ; Wait if not ready
     PLA                ; Restore A
-    STA UART_DATA      ; Send character
+    STA UART_DATA      ; Send byte
     RTS
 
 ; ============================================================================
-; CHRIN - Input character from PS/2 keyboard or UART
-; Checks PS/2 first, then falls back to UART if no PS/2 data
+; CHROUT - Output character (Phase 2 - T007 Enhanced)
+; Input: A = character to output
+; Uses IO_OUTPUT_MODE to route output
+; Preserves: X, Y
+; ============================================================================
+CHROUT:
+    PHA                ; Save character
+
+    ; Check output mode
+    LDA IO_OUTPUT_MODE
+    BEQ @UART_ONLY
+    CMP #1
+    BEQ @DISPLAY_ONLY
+
+    ; Mode 2 - Both UART and Display
+    PLA
+    PHA
+    JSR @SEND_UART
+    PLA
+    PHA
+    JSR @SEND_DISPLAY
+    PLA
+    RTS
+
+@UART_ONLY:
+    PLA
+    JSR @SEND_UART
+    RTS
+
+@DISPLAY_ONLY:
+    PLA
+    JSR @SEND_DISPLAY
+    RTS
+
+@SEND_UART:
+    PHA
+@WAIT_TX:
+    LDA UART_STATUS
+    AND #$01
+    BEQ @WAIT_TX
+    PLA
+    STA UART_DATA
+    RTS
+
+@SEND_DISPLAY:
+    ; GPU handles CR/LF in hardware, just send all characters
+    STA GPU_CHAR_DATA
+    RTS
+
+; ============================================================================
+; CHRIN - Input character (Phase 2 - T006 Enhanced)
+; Uses IO_INPUT_MODE to poll correct source(s)
 ; Output: A = character received
 ; Preserves: X, Y
 ; ============================================================================
-
 CHRIN:
-    ; Check PS/2 keyboard first
-    LDA PS2_STATUS      ; Check PS/2 data ready
-    AND #$01            ; Bit 0 = data ready
-    BEQ @TRY_UART       ; No PS/2 data, try UART
+    ; Check input mode
+    LDA IO_INPUT_MODE
+    BEQ @UART_ONLY
+    CMP #1
+    BEQ @PS2_ONLY
 
-    ; PS/2 has data - read scan code
-    LDA PS2_DATA        ; Read scan code from FIFO
+    ; Mode 2 - Both (poll both, first-come-first-served)
+@POLL_BOTH:
+    ; Check PS/2 first
+    LDA PS2_STATUS
+    AND #$01
+    BNE @READ_PS2
 
+    ; Check UART
+    LDA UART_STATUS
+    AND #$02
+    BNE @READ_UART
+
+    ; Neither ready, keep polling
+    JMP @POLL_BOTH
+
+@UART_ONLY:
+@WAIT_UART:
+    LDA UART_STATUS
+    AND #$02
+    BEQ @WAIT_UART
+@READ_UART:
+    LDA UART_DATA
+    RTS
+
+@PS2_ONLY:
+@WAIT_PS2:
+    LDA PS2_STATUS
+    AND #$01
+    BEQ @WAIT_PS2
+@READ_PS2:
+    LDA PS2_DATA
+    JSR PS2_TO_ASCII
+    BEQ @PS2_ONLY      ; If returned 0, try again
+    RTS
+
+; ============================================================================
+; CHRIN_TIMEOUT - Input character with timeout for XMODEM
+; Output: A = character received, Carry clear if success
+;         Carry set if timeout
+; Preserves: X, Y
+; Simple timeout implementation (not precise, but functional)
+; ============================================================================
+CHRIN_TIMEOUT:
+    ; Set timeout counter (approximate)
+    LDA #$FF
+    STA TEMP
+    LDA #$40           ; Outer loop count
+    STA TEMP2
+
+@TIMEOUT_LOOP:
+    ; Check if data available
+    LDA UART_STATUS
+    AND #$02
+    BNE @DATA_READY
+
+    ; Decrement timeout counter
+    DEC TEMP
+    BNE @TIMEOUT_LOOP
+
+    DEC TEMP2
+    BNE @TIMEOUT_LOOP
+
+    ; Timeout occurred
+    SEC
+    RTS
+
+@DATA_READY:
+    LDA UART_DATA
+    CLC
+    RTS
+
+; ============================================================================
+; PS2_TO_ASCII - Convert PS/2 scancode to ASCII (Phase 4 - T029)
+; Input: A = PS/2 scancode
+; Output: A = ASCII character (or 0 if should be ignored)
+; Uses: PS2_BREAK, PS2_SHIFT, PS2_CAPS
+; ============================================================================
+PS2_TO_ASCII:
     ; Check for break code prefix (0xF0)
     CMP #$F0
     BNE @NOT_BREAK
-
-    ; This is a break code prefix - set flag and get next scan code
     LDA #1
     STA PS2_BREAK
-    JMP CHRIN           ; Recursively get next character
+    LDA #0              ; Return 0 (ignore)
+    RTS
 
 @NOT_BREAK:
-    ; Check if this is a break code (key release)
-    PHA                 ; Save scan code
-    LDA PS2_BREAK
-    BNE @IS_BREAK
+    ; Check if this is a break code (release)
+    LDX PS2_BREAK
+    BEQ @MAKE_CODE
 
-    ; This is a make code (key press) - convert to ASCII
-    PLA                 ; Restore scan code
-    JSR PS2_TO_ASCII
+    ; Break code - clear flag
+    LDX #0
+    STX PS2_BREAK
+
+    ; Check for shift key release
+    CMP #$12            ; Left Shift
+    BEQ @CLEAR_SHIFT
+    CMP #$59            ; Right Shift
+    BEQ @CLEAR_SHIFT
+
+    LDA #0              ; Ignore other break codes
     RTS
 
-@IS_BREAK:
-    ; This is a break code (key release) - ignore and get next char
+@CLEAR_SHIFT:
+    LDX #0
+    STX PS2_SHIFT
     LDA #0
-    STA PS2_BREAK       ; Clear break flag
-    PLA                 ; Discard scan code
-    JMP CHRIN           ; Get next character
+    RTS
 
-@TRY_UART:
-    ; No PS/2 data - check UART
-    LDA UART_STATUS     ; Check RX ready
-    AND #$02            ; Bit 1 = RX ready
-    BEQ CHRIN           ; Loop until data from either source
+@MAKE_CODE:
+    ; Check for shift key press
+    CMP #$12            ; Left Shift
+    BEQ @SET_SHIFT
+    CMP #$59            ; Right Shift
+    BEQ @SET_SHIFT
 
-    LDA UART_DATA       ; Read character from UART
+    ; Check for Caps Lock toggle
+    CMP #$58            ; Caps Lock
+    BNE @NOT_CAPS
+    LDA PS2_CAPS
+    EOR #1
+    STA PS2_CAPS
+    LDA #0
+    RTS
+
+@SET_SHIFT:
+    LDA #1
+    STA PS2_SHIFT
+    LDA #0
+    RTS
+
+@NOT_CAPS:
+    ; Lookup in translation table
+    TAX
+    LDA PS2_XLAT_TABLE,X
+    BEQ @UNMAPPED
+
+    ; Check if letter and apply shift/caps
+    CMP #$61            ; 'a'
+    BCC @NOT_LETTER
+    CMP #$7B            ; 'z'+1
+    BCS @NOT_LETTER
+
+    ; It's a letter - check shift or caps
+    TAY                 ; Save ASCII
+    LDA PS2_SHIFT
+    ORA PS2_CAPS
+    BEQ @NO_UPPER
+
+    ; Convert to uppercase
+    TYA
+    SEC
+    SBC #$20
+    RTS
+
+@NO_UPPER:
+    TYA
+    RTS
+
+@NOT_LETTER:
+    ; Not a letter - return as-is
+    RTS
+
+@UNMAPPED:
+    LDA #0
     RTS
 
 ; ============================================================================
-; PS2_TO_ASCII - Convert PS/2 scan code to ASCII
-; Input: A = PS/2 scan code (Set 2)
-; Output: A = ASCII character (or original scan code if no mapping)
-; Preserves: X, Y
+; INIT_PS2_TABLE - Initialize PS/2 scancode lookup table (Phase 2 - T009)
+; Copies ROM data to RAM at $0280
 ; ============================================================================
-
-PS2_TO_ASCII:
-    ; Common key mappings (PS/2 Set 2 scan codes)
-    CMP #$1C            ; 'A'
-    BNE @NOT_A
-    LDA #'A'
-    RTS
-@NOT_A:
-    CMP #$32            ; 'B'
-    BNE @NOT_B
-    LDA #'B'
-    RTS
-@NOT_B:
-    CMP #$21            ; 'C'
-    BNE @NOT_C
-    LDA #'C'
-    RTS
-@NOT_C:
-    CMP #$23            ; 'D'
-    BNE @NOT_D
-    LDA #'D'
-    RTS
-@NOT_D:
-    CMP #$24            ; 'E'
-    BNE @NOT_E
-    LDA #'E'
-    RTS
-@NOT_E:
-    CMP #$2B            ; 'F'
-    BNE @NOT_F
-    LDA #'F'
-    RTS
-@NOT_F:
-    CMP #$34            ; 'G'
-    BNE @NOT_G
-    LDA #'G'
-    RTS
-@NOT_G:
-    CMP #$33            ; 'H'
-    BNE @NOT_H
-    LDA #'H'
-    RTS
-@NOT_H:
-    CMP #$43            ; 'I'
-    BNE @NOT_I
-    LDA #'I'
-    RTS
-@NOT_I:
-    CMP #$3B            ; 'J'
-    BNE @NOT_J
-    LDA #'J'
-    RTS
-@NOT_J:
-    CMP #$42            ; 'K'
-    BNE @NOT_K
-    LDA #'K'
-    RTS
-@NOT_K:
-    CMP #$4B            ; 'L'
-    BNE @NOT_L
-    LDA #'L'
-    RTS
-@NOT_L:
-    CMP #$3A            ; 'M'
-    BNE @NOT_M
-    LDA #'M'
-    RTS
-@NOT_M:
-    CMP #$31            ; 'N'
-    BNE @NOT_N
-    LDA #'N'
-    RTS
-@NOT_N:
-    CMP #$44            ; 'O'
-    BNE @NOT_O
-    LDA #'O'
-    RTS
-@NOT_O:
-    CMP #$4D            ; 'P'
-    BNE @NOT_P
-    LDA #'P'
-    RTS
-@NOT_P:
-    CMP #$15            ; 'Q'
-    BNE @NOT_Q
-    LDA #'Q'
-    RTS
-@NOT_Q:
-    CMP #$2D            ; 'R'
-    BNE @NOT_R
-    LDA #'R'
-    RTS
-@NOT_R:
-    CMP #$1B            ; 'S'
-    BNE @NOT_S
-    LDA #'S'
-    RTS
-@NOT_S:
-    CMP #$2C            ; 'T'
-    BNE @NOT_T
-    LDA #'T'
-    RTS
-@NOT_T:
-    CMP #$3C            ; 'U'
-    BNE @NOT_U
-    LDA #'U'
-    RTS
-@NOT_U:
-    CMP #$2A            ; 'V'
-    BNE @NOT_V
-    LDA #'V'
-    RTS
-@NOT_V:
-    CMP #$1D            ; 'W'
-    BNE @NOT_W
-    LDA #'W'
-    RTS
-@NOT_W:
-    CMP #$22            ; 'X'
-    BNE @NOT_X
-    LDA #'X'
-    RTS
-@NOT_X:
-    CMP #$35            ; 'Y'
-    BNE @NOT_Y
-    LDA #'Y'
-    RTS
-@NOT_Y:
-    CMP #$1A            ; 'Z'
-    BNE @NOT_Z
-    LDA #'Z'
-    RTS
-@NOT_Z:
-
-    ; Numbers
-    CMP #$45            ; '0'
-    BNE @NOT_0
-    LDA #'0'
-    RTS
-@NOT_0:
-    CMP #$16            ; '1'
-    BNE @NOT_1
-    LDA #'1'
-    RTS
-@NOT_1:
-    CMP #$1E            ; '2'
-    BNE @NOT_2
-    LDA #'2'
-    RTS
-@NOT_2:
-    CMP #$26            ; '3'
-    BNE @NOT_3
-    LDA #'3'
-    RTS
-@NOT_3:
-    CMP #$25            ; '4'
-    BNE @NOT_4
-    LDA #'4'
-    RTS
-@NOT_4:
-    CMP #$2E            ; '5'
-    BNE @NOT_5
-    LDA #'5'
-    RTS
-@NOT_5:
-    CMP #$36            ; '6'
-    BNE @NOT_6
-    LDA #'6'
-    RTS
-@NOT_6:
-    CMP #$3D            ; '7'
-    BNE @NOT_7
-    LDA #'7'
-    RTS
-@NOT_7:
-    CMP #$3E            ; '8'
-    BNE @NOT_8
-    LDA #'8'
-    RTS
-@NOT_8:
-    CMP #$46            ; '9'
-    BNE @NOT_9
-    LDA #'9'
-    RTS
-@NOT_9:
-
-    ; Special keys
-    CMP #$29            ; Space
-    BNE @NOT_SPACE
-    LDA #' '
-    RTS
-@NOT_SPACE:
-    CMP #$5A            ; Enter
-    BNE @NOT_ENTER
-    LDA #$0D            ; Carriage return
-    RTS
-@NOT_ENTER:
-
-    ; Unknown key - return '?'
-    LDA #'?'
+INIT_PS2_TABLE:
+    LDX #0
+@COPY_LOOP:
+    LDA PS2_XLAT_ROM,X
+    STA PS2_XLAT_TABLE,X
+    INX
+    CPX #128
+    BNE @COPY_LOOP
     RTS
 
 ; ============================================================================
 ; PRINT_WELCOME - Print welcome banner
 ; ============================================================================
-
 PRINT_WELCOME:
-    LDX #0
+    ; Set up pointer to WELCOME_MSG in zero page
+    LDA #<WELCOME_MSG
+    STA TEMP
+    LDA #>WELCOME_MSG
+    STA TEMP2
+
+    LDY #0
 @LOOP:
-    LDA WELCOME_MSG,X
+    LDA (TEMP),Y
     BEQ @DONE
     JSR CHROUT
-    INX
+    INY
     BNE @LOOP
+    ; Y wrapped to 0, increment high byte of pointer
+    INC TEMP2
+    JMP @LOOP
 
 @DONE:
     RTS
@@ -726,7 +1441,6 @@ PRINT_WELCOME:
 ; LCD_INIT - Initialize HD44780 LCD in 4-bit mode
 ; Uses: A, X
 ; ============================================================================
-
 LCD_INIT:
     ; Wait for LCD power-up and hardware init to complete
     ; Hardware init takes ~15-20ms, wait ~20ms total
@@ -756,7 +1470,6 @@ LCD_INIT:
 ; LCD_DELAY_LONG - Long delay for LCD clear/init commands (~5ms)
 ; Uses: X, Y
 ; ============================================================================
-
 LCD_DELAY_LONG:
     ; Nested delay loops for ~5ms at 25 MHz
     ; Outer loop: 160 iterations
@@ -777,7 +1490,6 @@ LCD_DELAY_LONG:
 ; LCD_DELAY - Standard delay for LCD commands and characters (~1ms)
 ; Uses: X, Y
 ; ============================================================================
-
 LCD_DELAY:
     ; Nested delay loops for ~1ms at 25 MHz
     ; Outer loop: 32 iterations
@@ -798,7 +1510,6 @@ LCD_DELAY:
 ; LCD_BOOT_MSG - Display boot message on LCD
 ; Uses: A, X, Y
 ; ============================================================================
-
 LCD_BOOT_MSG:
     ; Set cursor to home position (0x80)
     LDA #$80
@@ -830,7 +1541,7 @@ LCD_BOOT_MSG:
     STA LCD_CMD
     JSR LCD_DELAY
 
-    ; Print "Monitor v1.0" on line 2
+    ; Print "Monitor v2.0" on line 2
     LDX #0
 @LINE2:
     LDA LCD_MSG_LINE2,X
@@ -856,7 +1567,6 @@ LCD_BOOT_MSG:
 ; PRINT_HEX - Print byte in hex
 ; Input: A = byte to print
 ; ============================================================================
-
 PRINT_HEX:
     PHA                ; Save original value
 
@@ -891,8 +1601,8 @@ PRINT_NIBBLE:
 ; ============================================================================
 
 WELCOME_MSG:
-    .byte $0D, $0A                    ; CR LF
-    .byte "RetroCPU Monitor v1.1", $0D, $0A
+    .byte $0D, $0A
+    .byte "RetroCPU Monitor v2.0", $0D, $0A
     .byte $0D, $0A
     .byte "6502 FPGA Microcomputer", $0D, $0A
     .byte "(c) 2025 - Educational Project", $0D, $0A
@@ -902,14 +1612,18 @@ WELCOME_MSG:
     .byte "  D <addr> <val> - Deposit value", $0D, $0A
     .byte "  G             - Go to BASIC", $0D, $0A
     .byte "  H             - Help", $0D, $0A
+    .byte "  L             - Load binary (XMODEM)", $0D, $0A
+    .byte "  M <mode>      - Display mode (0=40col, 1=80col)", $0D, $0A
+    .byte "  I <in> <out>  - Configure I/O", $0D, $0A
+    .byte "  S             - Status", $0D, $0A
     .byte $0D, $0A
     .byte 0
 
 LCD_MSG_LINE1:
-    .byte "RetroCPU 6502   ", 0  ; 16 chars + null terminator
+    .byte "RetroCPU 6502   ", 0
 
 LCD_MSG_LINE2:
-    .byte "Monitor v1.1    ", 0  ; 16 chars + null terminator
+    .byte "Monitor v2.0    ", 0
 
 UNKNOWN_MSG:
     .byte "Unknown command", $0D, $0A
@@ -926,28 +1640,142 @@ GO_MSG:
 HELP_MSG:
     .byte $0D, $0A
     .byte "RetroCPU Monitor Commands:", $0D, $0A
-    .byte "  E <addr>        - Examine memory (hex address)", $0D, $0A
-    .byte "  D <addr> <val>  - Deposit value to memory", $0D, $0A
-    .byte "  G               - Go to BASIC interpreter", $0D, $0A
-    .byte "  H               - Display this help", $0D, $0A
+    .byte "  E <addr>        - Examine memory", $0D, $0A
+    .byte "  D <addr> <val>  - Deposit value", $0D, $0A
+    .byte "  G               - Go to BASIC", $0D, $0A
+    .byte "  H               - Help", $0D, $0A
+    .byte "  L               - Load binary (XMODEM)", $0D, $0A
+    .byte "  M <mode>        - Set display mode (0=40col, 1=80col)", $0D, $0A
+    .byte "  I <in> <out>    - Configure I/O", $0D, $0A
+    .byte "  S               - Status", $0D, $0A
     .byte $0D, $0A
-    .byte "Examples:", $0D, $0A
-    .byte "  E 0200          - Read byte at $0200", $0D, $0A
-    .byte "  D 0200 42       - Write $42 to $0200", $0D, $0A
+    .byte "I/O Modes: 0=UART, 1=PS2/Display, 2=Both", $0D, $0A
     .byte $0D, $0A
     .byte 0
+
+LOAD_READY_MSG:
+    .byte "Ready for XMODEM transfer...", $0D, $0A
+    .byte 0
+
+LOAD_SUCCESS_MSG:
+    .byte "Transfer complete!", $0D, $0A
+    .byte 0
+
+LOAD_ERROR_MSG:
+    .byte "Transfer failed!", $0D, $0A
+    .byte 0
+
+INVALID_INPUT_MSG:
+    .byte "Invalid input mode (0=UART, 1=PS2, 2=Both)", $0D, $0A
+    .byte 0
+
+INVALID_OUTPUT_MSG:
+    .byte "Invalid output mode (0=UART, 1=Display, 2=Both)", $0D, $0A
+    .byte 0
+
+CONFIG_PREFIX:
+    .byte "I/O Config: IN=", 0
+
+CONFIG_MID:
+    .byte ", OUT=", 0
+
+CONFIG_UART:
+    .byte "UART", 0
+
+CONFIG_PS2:
+    .byte "PS2", 0
+
+CONFIG_DISPLAY:
+    .byte "Display", 0
+
+CONFIG_BOTH:
+    .byte "Both", 0
+
+MODE_SET_MSG:
+    .byte "Display mode set", $0D, $0A
+    .byte 0
+
+MODE_CURRENT_MSG:
+    .byte "Current mode: ", 0
+
+MODE_40_MSG:
+    .byte "40-column", 0
+
+MODE_80_MSG:
+    .byte "80-column", 0
+
+MODE_ERROR_MSG:
+    .byte "Invalid mode (use 0 or 1)", $0D, $0A
+    .byte 0
+
+STATUS_MSG:
+    .byte "I/O Status:", $0D, $0A
+    .byte 0
+
+STATUS_INPUT_LABEL:
+    .byte "  Input:  ", 0
+
+STATUS_OUTPUT_LABEL:
+    .byte $0D, $0A, "  Output: ", 0
+
+STATUS_UART:
+    .byte "UART", 0
+
+STATUS_PS2:
+    .byte "PS/2", 0
+
+STATUS_DISPLAY:
+    .byte "Display", 0
+
+STATUS_BOTH:
+    .byte "UART + PS/2", 0
+
+; ============================================================================
+; PS/2 Scancode to ASCII Translation Table (ROM) - Phase 1 - T004
+; 128 bytes mapping scancode to ASCII (unshifted)
+; ============================================================================
+PS2_XLAT_ROM:
+    ; 0x00-0x0F
+    .byte $00, $00, $00, $00, $00, $00, $00, $00
+    .byte $00, $00, $00, $00, $00, $09, $60, $00  ; 0x0D=Tab, 0x0E=`
+
+    ; 0x10-0x1F
+    .byte $00, $00, $00, $00, $00, $71, $31, $00  ; 0x15='q', 0x16='1'
+    .byte $00, $00, $7A, $73, $61, $77, $32, $00  ; 0x1A='z', 0x1B='s', 0x1C='a', 0x1D='w', 0x1E='2'
+
+    ; 0x20-0x2F
+    .byte $00, $63, $78, $64, $65, $34, $33, $00  ; 0x21='c', 0x22='x', 0x23='d', 0x24='e', 0x25='4', 0x26='3'
+    .byte $00, $20, $76, $66, $74, $72, $35, $00  ; 0x29=' ', 0x2A='v', 0x2B='f', 0x2C='t', 0x2D='r', 0x2E='5'
+
+    ; 0x30-0x3F
+    .byte $00, $6E, $62, $68, $67, $79, $36, $00  ; 0x31='n', 0x32='b', 0x33='h', 0x34='g', 0x35='y', 0x36='6'
+    .byte $00, $00, $6D, $6A, $75, $37, $38, $00  ; 0x3A='m', 0x3B='j', 0x3C='u', 0x3D='7', 0x3E='8'
+
+    ; 0x40-0x4F
+    .byte $00, $2C, $6B, $69, $6F, $30, $39, $00  ; 0x41=',', 0x42='k', 0x43='i', 0x44='o', 0x45='0', 0x46='9'
+    .byte $00, $2E, $2F, $6C, $3B, $70, $2D, $00  ; 0x49='.', 0x4A='/', 0x4B='l', 0x4C=';', 0x4D='p', 0x4E='-'
+
+    ; 0x50-0x5F
+    .byte $00, $00, $27, $00, $5B, $3D, $00, $00  ; 0x52='\'', 0x54='[', 0x55='='
+    .byte $00, $00, $0D, $5D, $00, $5C, $00, $00  ; 0x5A=Enter, 0x5B=']', 0x5D='\\'
+
+    ; 0x60-0x6F
+    .byte $00, $00, $00, $00, $00, $00, $08, $00  ; 0x66=Backspace
+    .byte $00, $00, $00, $00, $00, $00, $00, $00
+
+    ; 0x70-0x7F
+    .byte $00, $00, $00, $00, $00, $00, $1B, $00  ; 0x76=Escape
+    .byte $00, $00, $00, $00, $00, $00, $00, $00
 
 ; ============================================================================
 ; NMI Handler (not used in MVP)
 ; ============================================================================
-
 NMI:
     RTI
 
 ; ============================================================================
 ; IRQ Handler (not used in MVP)
 ; ============================================================================
-
 IRQ:
     RTI
 

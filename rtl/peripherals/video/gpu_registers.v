@@ -207,25 +207,42 @@ module gpu_registers(
                 case (addr)
                     // 0xC010: CHAR_DATA - Write character and auto-advance cursor
                     ADDR_CHAR_DATA: begin
-                        // Write character to buffer at current cursor position
-                        char_buf_addr <= cursor_buffer_addr;
-                        char_buf_data <= data_in;
-                        char_buf_we   <= 1'b1;
-
-                        // Auto-advance cursor
-                        if (cursor_col < max_col) begin
-                            // Normal advance: increment column
-                            cursor_col <= cursor_col + 7'd1;
-                        end else begin
-                            // End of line: wrap to start of next line
+                        // Handle control characters
+                        if (data_in == 8'h0D) begin
+                            // CR (Carriage Return): Move cursor to column 0
                             cursor_col <= 7'd0;
+                            char_buf_we <= 1'b0;  // Don't write CR to buffer
+                        end else if (data_in == 8'h0A) begin
+                            // LF (Line Feed): Move to next row
                             if (cursor_row < 5'd29) begin
-                                // Not at last row: advance to next row
                                 cursor_row <= cursor_row + 5'd1;
                             end else begin
                                 // At last row: trigger scroll and stay at row 29
                                 scroll_screen <= 1'b1;
                                 cursor_row <= 5'd29;
+                            end
+                            char_buf_we <= 1'b0;  // Don't write LF to buffer
+                        end else begin
+                            // Normal printable character: Write to buffer and auto-advance
+                            char_buf_addr <= cursor_buffer_addr;
+                            char_buf_data <= data_in;
+                            char_buf_we   <= 1'b1;
+
+                            // Auto-advance cursor
+                            if (cursor_col < max_col) begin
+                                // Normal advance: increment column
+                                cursor_col <= cursor_col + 7'd1;
+                            end else begin
+                                // End of line: wrap to start of next line
+                                cursor_col <= 7'd0;
+                                if (cursor_row < 5'd29) begin
+                                    // Not at last row: advance to next row
+                                    cursor_row <= cursor_row + 5'd1;
+                                end else begin
+                                    // At last row: trigger scroll and stay at row 29
+                                    scroll_screen <= 1'b1;
+                                    cursor_row <= 5'd29;
+                                end
                             end
                         end
                     end
