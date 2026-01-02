@@ -1,15 +1,19 @@
 # RetroCPU: 6502 FPGA Microcomputer
 
-An educational 6502-based microcomputer system implemented on FPGA using open-source tools.
+An educational 6502-based microcomputer system implemented on FPGA using open-source tools, featuring a complete DVI/HDMI character display GPU.
 
 ## Overview
 
 RetroCPU is a complete retro computing system featuring:
 - **M65C02 CPU** running at 25 MHz (6.25 MHz microcycle rate, ~5 MIPS)
 - **64 KB memory** (32 KB RAM + 24 KB ROM + 8 KB I/O space)
+- **DVI/HDMI GPU** with 640×480@60Hz character display
+  - 40-column and 80-column text modes
+  - 8-color palette (3-bit RGB)
+  - Blinking cursor with auto-scroll
 - **Microsoft 6502 BASIC** in ROM
 - **Monitor program** for memory examination and debugging
-- **UART interface** for serial communication (115200 baud)
+- **UART interface** for serial communication (9600 baud)
 - **HD44780 LCD display** support (2x16 or 2x20 character LCD)
 - **PS/2 keyboard** interface
 
@@ -96,12 +100,27 @@ $0000-$00FF : Zero Page RAM (256 bytes)
 $0100-$01FF : Stack RAM (256 bytes)
 $0200-$7FFF : General Purpose RAM (31.5 KB)
 $8000-$BFFF : BASIC ROM (16 KB)
-$C000-$C0FF : UART Registers
+$C000-$C00F : UART Registers
+$C010-$C016 : GPU Registers (DVI Character Display)
 $C100-$C1FF : LCD Registers
 $C200-$C2FF : PS/2 Keyboard Registers
 $C300-$DFFF : Reserved I/O Space
 $E000-$FFFF : Monitor ROM + Vectors (8 KB)
 ```
+
+### GPU Registers (0xC010-0xC016)
+
+| Address | Register | Description |
+|---------|----------|-------------|
+| 0xC010 | CHAR_DATA | Write character at cursor (auto-advance) |
+| 0xC011 | CURSOR_ROW | Cursor row (0-29) |
+| 0xC012 | CURSOR_COL | Cursor column (0-39 or 0-79) |
+| 0xC013 | CONTROL | Clear, mode, cursor enable |
+| 0xC014 | FG_COLOR | Foreground color (3-bit RGB) |
+| 0xC015 | BG_COLOR | Background color (3-bit RGB) |
+| 0xC016 | STATUS | GPU status (ready, vsync) |
+
+See `docs/modules/register_interface.md` for complete GPU documentation.
 
 ### Pin Assignments (Colorlight i5)
 
@@ -211,10 +230,21 @@ See [.specify/memory/constitution.md](.specify/memory/constitution.md) for compl
 
 ## License
 
-This project is for educational purposes. Component licenses:
-- **M65C02 CPU core**: LGPL v3 (MAM65C02-Processor-Core)
-- **EhBASIC**: Lee Davison, free to use
-- **Project code**: To be determined (suggest MIT or Apache 2.0)
+This project is licensed under the **BSD 3-Clause License** - see the [LICENSE](LICENSE) file.
+
+### Third-Party Components
+
+This project includes code from third-party sources under different licenses:
+
+- **M65C02 CPU** (`rtl/cpu/m65c02/`): GNU LGPL v2.1+
+  - Copyright 2012-2013 Michael A. Morris
+  - https://github.com/MorrisMA/M65C02A
+
+- **TMDS Encoder** (`rtl/peripherals/video/tmds_encoder.v`): ISC License
+  - Copyright 2021 Hirosh Dabui
+  - https://github.com/splinedrive/my_hdmi_device
+
+See [NOTICE](NOTICE) file for complete attribution details.
 
 ## Contributing
 
@@ -228,13 +258,28 @@ See [specs/001-6502-fpga-microcomputer/tasks.md](specs/001-6502-fpga-microcomput
 
 ## Status
 
-**Current Version**: v0.2.0 - M65C02 Port Complete ✅
-**System**: Fully operational with M65C02 CPU core
-**Zero Page Bug**: Fixed (was broken with Arlet 6502)
-**Performance**: 6x improvement (1 MHz → 6.25 MHz effective)
-**Next Milestone**: Firmware enhancement (monitor commands, full BASIC)
+**Current Version**: v0.3.0 - DVI Character Display GPU Complete ✅
 
-See [specs/002-m65c02-port/](specs/002-m65c02-port/) for M65C02 integration details and task list.
+### Completed Features
+- ✅ M65C02 CPU core (25 MHz, 6.25 MHz effective)
+- ✅ 64 KB memory system with RAM/ROM
+- ✅ DVI/HDMI GPU (640×480@60Hz, 40/80-column modes, 8 colors, cursor)
+- ✅ UART serial interface (9600 baud)
+- ✅ Monitor firmware with memory commands
+- ✅ Open-source toolchain (Yosys, nextpnr-ecp5)
+
+### Recent Milestones
+- **2026-01-01**: DVI Character Display GPU complete (all 6 user stories validated)
+- **2025-12-31**: Auto-scroll and color configuration working
+- **2025-12-28**: Basic character output and DVI signal generation
+- **2025-12-27**: M65C02 port complete with monitor firmware
+
+### Next Steps
+- Integration with PS/2 keyboard for standalone operation
+- BASIC interpreter integration with GPU
+- Enhanced monitor commands
+
+See [specs/003-hdmi-character-display/](specs/003-hdmi-character-display/) for GPU implementation details.
 
 ## Contact
 

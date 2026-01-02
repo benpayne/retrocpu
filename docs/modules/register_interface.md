@@ -159,12 +159,29 @@ LDA #$06       ; Bit 1 (MODE) + Bit 2 (CURSOR_EN)
 STA $C013      ; Auto-clears screen and resets cursor
 ```
 
-#### Bit 2: CURSOR_EN (Future Feature)
+#### Bit 2: CURSOR_EN
 
-Controls cursor visibility. **Note**: Cursor display not yet implemented.
+Controls cursor visibility.
 
 - 0 = Cursor hidden
-- 1 = Cursor visible (flashing block at cursor position)
+- 1 = Cursor visible (blinking inverted character at cursor position)
+
+**Cursor Display Features**:
+- **Blink Rate**: 2 Hz (toggles every 30 frames at 60 Hz refresh)
+- **Visual Style**: Inverted colors (foreground and background swap)
+- **Position**: Displays at current CURSOR_ROW and CURSOR_COL position
+- **Behavior**: Cursor follows text as characters are written via CHAR_DATA
+
+**Example**:
+```asm
+; Enable cursor in 80-column mode
+LDA #$06       ; Bit 1 (MODE) + Bit 2 (CURSOR_EN)
+STA $C013      ; 80-column mode with cursor
+
+; Disable cursor
+LDA #$02       ; Only Bit 1 (MODE) set
+STA $C013      ; Cursor hidden
+```
 
 ### 0xC014: FG_COLOR (Read/Write)
 
@@ -466,17 +483,19 @@ localparam ADDR_STATUS     = 4'h6;  // 0xC016
 - ✅ CHAR_DATA writes characters correctly
 - ✅ CURSOR_ROW/COL position cursor
 - ✅ CONTROL[0] clears screen
+- ✅ CONTROL[1] switches 40/80-column modes
+- ✅ CONTROL[2] enables/disables cursor
 - ✅ FG_COLOR/BG_COLOR set display colors
 - ✅ STATUS returns 0xC0 (GPU ready)
 - ✅ Auto-advance after CHAR_DATA write
+- ✅ Auto-scroll at screen bottom (circular buffer)
+- ✅ Hardware cursor display (2 Hz blink, color inversion)
 - ✅ Python monitor scripts working
 
 ### Pending Features
 
-- ⏳ Auto-scroll at screen bottom
-- ⏳ 40-column mode switching
-- ⏳ Hardware cursor display
 - ⏳ VBLANK/HBLANK status flags
+- ⏳ Hardware-accelerated clear/scroll (currently software via circular buffer)
 
 ## References
 

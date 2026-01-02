@@ -1,0 +1,101 @@
+RetroCPU - 6502-based FPGA Computer
+Copyright (c) 2025 Ben Payne
+
+================================================================================
+
+THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
+
+This project incorporates material from third-party sources. The following
+is a list of such third-party software and their respective licenses:
+
+================================================================================
+
+1. M65C02 Microprocessor Core
+   Copyright 2012-2013 Michael A. Morris, M. A. Morris & Associates
+   License: GNU Lesser General Public License v2.1 or later
+   Location: rtl/cpu/m65c02/
+
+   The M65C02 is a soft-core implementation of the WDC W65C02 microprocessor
+   for FPGA devices.
+
+   Official Repository: https://github.com/MorrisMA/M65C02A
+
+   This library is free software; you can redistribute it and/or modify it
+   under the terms of the GNU Lesser General Public License as published by
+   the Free Software Foundation; either version 2.1 of the License, or (at
+   your option) any later version.
+
+   A copy of the GNU Lesser General Public License is included in:
+   rtl/cpu/m65c02/LICENSE
+
+================================================================================
+
+2. HDMI/DVI Transmitter (TMDS Encoder)
+   Copyright (C) 2021 Hirosh Dabui <hirosh@dabui.de>
+   License: ISC License
+   Location: rtl/peripherals/video/tmds_encoder.v
+
+   TMDS encoder implementation for DVI video output, adapted from the
+   my_hdmi_device project.
+
+   Official Repository: https://github.com/splinedrive/my_hdmi_device
+
+   Permission to use, copy, modify, and/or distribute this software for any
+   purpose with or without fee is hereby granted, provided that the above
+   copyright notice and this permission notice appear in all copies.
+
+   THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+   WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+   MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+   ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+   WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+   ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+   OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+================================================================================
+
+3. Additional Acknowledgments
+
+   - DVI transmitter infrastructure (dvi_transmitter.v) adapted from
+     my_hdmi_device by Hirosh Dabui, ISC License
+
+   - VGA timing parameters and TMDS encoding based on DVI 1.0 specification
+
+   - Colorlight i5 board support and pinout information from the open-source
+     FPGA community
+
+   - Development tools: Yosys, nextpnr-ecp5, openFPGALoader (open-source EDA)
+
+================================================================================
+
+ORIGINAL WORKS (BSD 3-Clause License)
+
+The following components are original works created for this project and are
+licensed under the BSD 3-Clause License (see LICENSE file):
+
+- GPU Character Display System (rtl/peripherals/video/):
+  - gpu_core.v, gpu_registers.v, gpu_top.v
+  - character_buffer.v, character_renderer.v
+  - font_rom.v, vga_timing_generator.v
+  - dvi_transmitter.v (integration, adapted from my_hdmi_device)
+
+- System Integration:
+  - soc_top.v, address_decoder.v
+  - ecp5_pll.sv (PLL configuration)
+
+- Monitor Firmware:
+  - firmware/monitor/monitor.s
+
+- Test Scripts and Documentation:
+  - All Python test scripts (temp/*.py)
+  - Documentation (docs/, specs/)
+  - Build infrastructure (build/, Makefiles)
+
+================================================================================
+
+For complete license texts, see:
+- Main project: LICENSE (BSD 3-Clause)
+- M65C02 CPU: rtl/cpu/m65c02/LICENSE (LGPL v2.1+)
+- TMDS Encoder: rtl/peripherals/video/tmds_encoder.v header (ISC)
+
+For questions about licensing, please open an issue on GitHub.

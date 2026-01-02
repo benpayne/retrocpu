@@ -1,0 +1,43 @@
+GNU LESSER GENERAL PUBLIC LICENSE
+Version 2.1, February 1999
+
+Copyright (C) 2012-2013 Michael A. Morris, M. A. Morris & Associates
+
+All files in this directory (rtl/cpu/m65c02/) are licensed under the
+GNU Lesser General Public License v2.1 or later.
+
+The source code contained herein is publicly released under the terms
+and conditions of the GNU Lesser Public License. No part of this source
+code may be reproduced or transmitted in any form or by any means,
+electronic or mechanical, including photocopying, recording, or any
+information storage and retrieval system in violation of the license
+under which the source code is released.
+
+The source code contained herein is free; it may be redistributed and/or
+modified in accordance with the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either version 2.1
+of the GNU Lesser General Public License, or any later version.
+
+The source code contained herein is freely released WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.
+
+--------------------------------------------------------------------------------
+
+For the full text of the GNU Lesser General Public License v2.1, see:
+https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+
+Or write to:
+    Free Software Foundation, Inc.
+    51 Franklin Street, Fifth Floor
+    Boston, MA  02110-1301 USA
+
+--------------------------------------------------------------------------------
+
+Original Author: Michael A. Morris
+                 Huntsville, AL
+
+Official Repository: https://github.com/MorrisMA/M65C02A
+
+Further, no use of this source code is permitted in any form or means
+without inclusion of this banner prominently in any derived works.

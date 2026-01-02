@@ -234,6 +234,12 @@ module gpu_core(
         .bg_color      (bg_color),       // Background color (3-bit RGB)
         .top_line      (top_line),       // Circular buffer top line offset
 
+        // Cursor configuration
+        .cursor_enable (cursor_enable),  // Cursor visibility enable
+        .cursor_row    (cursor_row),     // Cursor row position (0-29)
+        .cursor_col    (cursor_col),     // Cursor column position (0-39/79)
+        .vsync         (vsync),          // Vertical sync (for cursor blink)
+
         // Character buffer interface (read port)
         .char_addr     (char_buf_rd_addr), // Address to character buffer
         .char_data     (char_buf_rd_data), // Character code from buffer

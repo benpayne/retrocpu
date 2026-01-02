@@ -60,6 +60,12 @@ module character_renderer(
     input  wire [2:0]  bg_color,        // Background color (3-bit RGB)
     input  wire [4:0]  top_line,        // Circular buffer: physical line at screen row 0
 
+    // Cursor configuration
+    input  wire        cursor_enable,   // Cursor visibility enable
+    input  wire [4:0]  cursor_row,      // Cursor row position (0-29)
+    input  wire [6:0]  cursor_col,      // Cursor column position (0-39/79)
+    input  wire        vsync,           // Vertical sync (for cursor blink timing)
+
     // Character buffer interface
     output wire [11:0] char_addr,       // Address to character buffer
     input  wire [7:0]  char_data,       // Character code from buffer
@@ -196,6 +202,63 @@ module character_renderer(
     wire [2:0] pixel_bit_index = 3'd7 - pixel_x;
     wire pixel_on = font_pixels[pixel_bit_index];
 
+    //==========================================================================
+    // Cursor Blink Logic
+    //==========================================================================
+
+    // Cursor blink counter: Blink every 30 frames @ 60 Hz = 2 Hz blink rate
+    reg [5:0] cursor_blink_counter;  // 0-59 (counts frames)
+    reg       cursor_blink_state;    // 0=off, 1=on
+    reg       vsync_d1;               // Delayed vsync for edge detection
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            cursor_blink_counter <= 6'd0;
+            cursor_blink_state   <= 1'b1;  // Start visible
+            vsync_d1             <= 1'b0;
+        end else begin
+            vsync_d1 <= vsync;
+
+            // Detect rising edge of vsync (start of new frame)
+            if (vsync && !vsync_d1) begin
+                if (cursor_blink_counter >= 6'd29) begin
+                    // Toggle blink state every 30 frames
+                    cursor_blink_state   <= ~cursor_blink_state;
+                    cursor_blink_counter <= 6'd0;
+                end else begin
+                    cursor_blink_counter <= cursor_blink_counter + 6'd1;
+                end
+            end
+        end
+    end
+
+    //==========================================================================
+    // Cursor Position Detection (Stage 2 - propagate to Stage 3)
+    //==========================================================================
+
+    // Check if current position matches cursor position
+    // Need to compare screen row/col (not physical row)
+    wire at_cursor_position = cursor_enable &&
+                              (screen_row == cursor_row) &&
+                              (char_col == cursor_col);
+
+    // Register cursor match for pipeline Stage 3
+    reg at_cursor_d1;
+    reg at_cursor_d2;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            at_cursor_d1 <= 1'b0;
+            at_cursor_d2 <= 1'b0;
+        end else begin
+            at_cursor_d1 <= at_cursor_position;
+            at_cursor_d2 <= at_cursor_d1;
+        end
+    end
+
+    // Cursor is visible when enabled, blinking, and at cursor position
+    wire cursor_visible = at_cursor_d2 && cursor_blink_state;
+
     // Color expansion: Convert 3-bit RGB to 8-bit per channel
     // 0 → 0x00, 1 → 0xFF
     wire [7:0] fg_r = fg_color_d2[2] ? 8'hFF : 8'h00;
@@ -207,9 +270,10 @@ module character_renderer(
     wire [7:0] bg_b = bg_color_d2[0] ? 8'hFF : 8'h00;
 
     // Select foreground or background color based on pixel value
-    wire [7:0] pixel_r = pixel_on ? fg_r : bg_r;
-    wire [7:0] pixel_g = pixel_on ? fg_g : bg_g;
-    wire [7:0] pixel_b = pixel_on ? fg_b : bg_b;
+    // When cursor is visible, invert the colors (swap FG/BG)
+    wire [7:0] pixel_r = cursor_visible ? (pixel_on ? bg_r : fg_r) : (pixel_on ? fg_r : bg_r);
+    wire [7:0] pixel_g = cursor_visible ? (pixel_on ? bg_g : fg_g) : (pixel_on ? fg_g : bg_g);
+    wire [7:0] pixel_b = cursor_visible ? (pixel_on ? bg_b : fg_b) : (pixel_on ? fg_b : bg_b);
 
     // Output pixel color (black during blanking)
     always @(posedge clk or negedge rst_n) begin
