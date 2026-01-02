@@ -9,13 +9,27 @@
 
 The GPU is accessed via 7 memory-mapped registers at 0xC010-0xC016. The CPU can write characters, control the cursor, configure colors, and read status through these registers.
 
+## Reset Values
+
+On power-up or system reset, the GPU registers initialize to:
+
+| Register | Default Value | Description |
+|----------|---------------|-------------|
+| CURSOR_ROW | 0x00 | Top row |
+| CURSOR_COL | 0x00 | Leftmost column |
+| CONTROL | 0x04 | 40-column mode, cursor enabled |
+| FG_COLOR | 0x07 | White |
+| BG_COLOR | 0x00 | Black |
+
+**Important**: The GPU defaults to **40-column mode** (CONTROL[1]=0). To use 80-column mode, write `0x06` to CONTROL register (sets MODE_80COL and CURSOR_EN bits).
+
 ## Memory Map
 
 | Address | Name | Access | Width | Description |
 |---------|------|--------|-------|-------------|
 | 0xC010 | CHAR_DATA | W | 8-bit | Character data - write ASCII to display |
 | 0xC011 | CURSOR_ROW | R/W | 5-bit | Cursor row position (0-29) |
-| 0xC012 | CURSOR_COL | R/W | 7-bit | Cursor column position (0-79) |
+| 0xC012 | CURSOR_COL | R/W | 7-bit | Cursor column position (0-39 in 40-col, 0-79 in 80-col) |
 | 0xC013 | CONTROL | W | 8-bit | Control register (clear, mode, cursor enable) |
 | 0xC014 | FG_COLOR | R/W | 3-bit | Foreground color (3-bit RGB) |
 | 0xC015 | BG_COLOR | R/W | 3-bit | Background color (3-bit RGB) |
@@ -28,10 +42,14 @@ The GPU is accessed via 7 memory-mapped registers at 0xC010-0xC016. The CPU can 
 Writes an ASCII character to the character buffer at the current cursor position.
 
 **Behavior**:
-1. ASCII code written to buffer at `(CURSOR_ROW * 80) + CURSOR_COL`
+1. ASCII code written to buffer at current cursor position
 2. Cursor automatically advances to next position
-3. At end of row (column 79), cursor wraps to column 0 of next row
-4. **Future**: At end of screen (row 29, col 79), screen will scroll up
+3. At end of row (column 39/79), cursor wraps to column 0 of next row
+4. At end of screen (row 29, last column), screen scrolls up automatically
+   - All rows shift up by one (row 0 disappears, row 1→0, row 2→1, etc.)
+   - New blank row appears at bottom (row 29)
+   - Cursor remains at row 29, column 0
+   - Implemented using circular buffer for efficiency
 
 **Example**:
 ```asm
@@ -103,7 +121,7 @@ Control register for GPU operations.
 | Bit | Name | Description |
 |-----|------|-------------|
 | 0 | CLEAR | Clear screen (write 1 to clear, auto-clears after) |
-| 1 | MODE_80COL | Display mode: 0=40-column, 1=80-column (future) |
+| 1 | MODE_80COL | Display mode: 0=40-column (default), 1=80-column |
 | 2 | CURSOR_EN | Cursor enable: 0=hidden, 1=visible (future) |
 | 3-7 | Reserved | Reserved for future use |
 
@@ -120,14 +138,26 @@ STA $C013      ; Clear screen
 
 **Timing**: Clear operation completes within a few microseconds. New frame displays cleared screen within 16 ms.
 
-#### Bit 1: MODE_80COL (Future Feature)
+#### Bit 1: MODE_80COL
 
-Controls display mode selection. **Note**: Currently only 80-column mode is active.
+Controls display mode selection between 40-column and 80-column modes.
 
-- 0 = 40-column mode (40×30, characters doubled horizontally)
-- 1 = 80-column mode (80×30, native character width) **[CURRENT]**
+- 0 = 40-column mode (40×30, characters doubled horizontally) **[DEFAULT]**
+- 1 = 80-column mode (80×30, native character width)
 
-**Future behavior**: Switching modes will automatically clear screen and reset cursor.
+**Important**: The GPU resets to 40-column mode. To use 80-column mode, write `0x06` to enable MODE_80COL and CURSOR_EN.
+
+**Mode Switching Behavior**:
+- Automatically clears entire screen (fills with spaces)
+- Resets cursor position to (0, 0)
+- Resets circular buffer offset (top_line = 0)
+
+**Example**:
+```asm
+; Switch to 80-column mode
+LDA #$06       ; Bit 1 (MODE) + Bit 2 (CURSOR_EN)
+STA $C013      ; Auto-clears screen and resets cursor
+```
 
 #### Bit 2: CURSOR_EN (Future Feature)
 
