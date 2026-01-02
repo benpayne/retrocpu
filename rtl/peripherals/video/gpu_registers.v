@@ -91,28 +91,37 @@ module gpu_registers(
     // Internal registers
     reg        mode_80col_prev;         // Previous mode for change detection
 
-    // Scroll state machine
-    localparam SCROLL_IDLE     = 2'b00;
-    localparam SCROLL_CLEARING = 2'b01;
-    reg [1:0]  scroll_state;
-    reg [6:0]  scroll_counter;          // Counter for clearing bottom line (0-79)
+    // State machine for scroll and clear operations
+    localparam STATE_IDLE          = 2'b00;
+    localparam STATE_CLEARING_LINE = 2'b01;  // Clearing one line after scroll
+    localparam STATE_CLEARING_ALL  = 2'b10;  // Clearing entire screen
+    reg [1:0]  state;
+    reg [11:0] clear_counter;           // Counter for clearing (0-2399)
 
     // Maximum column based on current mode
     wire [6:0] max_col = mode_80col ? 7'd79 : 7'd39;
 
+    // Maximum buffer address based on mode (for full clear)
+    wire [11:0] max_addr = mode_80col ? 12'd2399 : 12'd1199;
+
+    // Calculate physical row in circular buffer from cursor screen row
+    // physical_row = (cursor_row + top_line) % 30
+    wire [5:0] cursor_row_sum = {1'b0, cursor_row} + {1'b0, top_line};
+    wire [4:0] cursor_physical_row = (cursor_row_sum >= 6'd30) ? (cursor_row_sum - 6'd30) : cursor_row_sum[4:0];
+
     // Calculate character buffer address from cursor position
-    // Address = row * columns + col
+    // Address = physical_row * columns + col
     wire [11:0] cursor_buffer_addr = mode_80col ?
-                                     ({7'b0, cursor_row} * 12'd80) + {5'b0, cursor_col} :
-                                     ({7'b0, cursor_row} * 12'd40) + {5'b0, cursor_col};
+                                     ({7'b0, cursor_physical_row} * 12'd80) + {5'b0, cursor_col} :
+                                     ({7'b0, cursor_physical_row} * 12'd40) + {5'b0, cursor_col};
 
     // Bottom line in circular buffer = (top_line - 1 + 30) % 30
     wire [4:0] bottom_line = (top_line >= 5'd1) ? (top_line - 5'd1) : 5'd29;
 
-    // Address for clearing during scroll
-    wire [11:0] scroll_clear_addr = mode_80col ?
-                                    ({7'b0, bottom_line} * 12'd80) + {5'b0, scroll_counter} :
-                                    ({7'b0, bottom_line} * 12'd40) + {5'b0, scroll_counter};
+    // Address for clearing one line (after scroll) or entire screen
+    wire [11:0] line_clear_addr = mode_80col ?
+                                  ({7'b0, bottom_line} * 12'd80) + {5'b0, clear_counter[6:0]} :
+                                  ({7'b0, bottom_line} * 12'd40) + {5'b0, clear_counter[6:0]};
 
     // Reset and register write logic
     always @(posedge clk or negedge rst_n) begin
@@ -131,8 +140,8 @@ module gpu_registers(
             char_buf_addr   <= 12'd0;
             char_buf_data   <= 8'd0;
             mode_80col_prev <= 1'b0;
-            scroll_state    <= SCROLL_IDLE;
-            scroll_counter  <= 7'd0;
+            state           <= STATE_IDLE;
+            clear_counter   <= 12'd0;
         end else begin
             // Default: clear one-shot signals
             clear_screen    <= 1'b0;
@@ -142,39 +151,59 @@ module gpu_registers(
             // Track mode changes
             mode_80col_prev <= mode_80col;
 
-            // Scroll state machine - handles automatic scrolling
-            case (scroll_state)
-                SCROLL_IDLE: begin
-                    // Wait for scroll trigger
-                    if (scroll_screen) begin
+            // State machine - handles scroll and clear operations
+            case (state)
+                STATE_IDLE: begin
+                    // Wait for scroll or clear trigger
+                    if (clear_screen) begin
+                        // Start clearing entire screen
+                        clear_counter <= 12'd0;
+                        top_line <= 5'd0;  // Reset circular buffer
+                        state <= STATE_CLEARING_ALL;
+                    end else if (scroll_screen) begin
                         // Increment top_line with wraparound
                         top_line <= (top_line == 5'd29) ? 5'd0 : top_line + 5'd1;
                         // Start clearing the new bottom line
-                        scroll_counter <= 7'd0;
-                        scroll_state <= SCROLL_CLEARING;
+                        clear_counter <= 12'd0;
+                        state <= STATE_CLEARING_LINE;
                     end
                 end
 
-                SCROLL_CLEARING: begin
-                    // Clear the new bottom line (which was the old top line)
-                    char_buf_addr <= scroll_clear_addr;
+                STATE_CLEARING_LINE: begin
+                    // Clear one line (after scroll)
+                    char_buf_addr <= line_clear_addr;
                     char_buf_data <= 8'h20;  // Space character
                     char_buf_we   <= 1'b1;
 
                     // Increment counter
-                    scroll_counter <= scroll_counter + 7'd1;
+                    clear_counter <= clear_counter + 12'd1;
 
-                    // Check if done clearing
-                    if (scroll_counter >= max_col) begin
-                        scroll_state <= SCROLL_IDLE;
+                    // Check if done clearing line
+                    if (clear_counter[6:0] >= max_col) begin
+                        state <= STATE_IDLE;
                     end
                 end
 
-                default: scroll_state <= SCROLL_IDLE;
+                STATE_CLEARING_ALL: begin
+                    // Clear entire screen
+                    char_buf_addr <= clear_counter;
+                    char_buf_data <= 8'h20;  // Space character
+                    char_buf_we   <= 1'b1;
+
+                    // Increment counter
+                    clear_counter <= clear_counter + 12'd1;
+
+                    // Check if done clearing all
+                    if (clear_counter >= max_addr) begin
+                        state <= STATE_IDLE;
+                    end
+                end
+
+                default: state <= STATE_IDLE;
             endcase
 
             // Handle CPU register writes
-            if (we && scroll_state == SCROLL_IDLE) begin  // Only allow writes when not scrolling
+            if (we && state == STATE_IDLE) begin  // Only allow writes when not busy
                 case (addr)
                     // 0xC010: CHAR_DATA - Write character and auto-advance cursor
                     ADDR_CHAR_DATA: begin
