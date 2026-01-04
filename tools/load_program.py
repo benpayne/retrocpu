@@ -163,7 +163,7 @@ class XModemSender:
             return False
 
 
-def load_program(binary_path, port='/dev/ttyACM0', baud=9600, execute=False, verbose=False):
+def load_program(binary_path, port='/dev/ttyACM0', baud=9600, execute=False, verbose=False, no_prompt=False):
     """Load a binary program to RetroCPU and optionally execute it"""
 
     # Read binary file
@@ -190,29 +190,35 @@ def load_program(binary_path, port='/dev/ttyACM0', baud=9600, execute=False, ver
             time.sleep(0.5)
             ser.reset_input_buffer()
 
-            # Get a fresh prompt
-            if verbose:
-                print("Getting monitor prompt...")
-            ser.write(b'\r')
-            ser.flush()
-            time.sleep(0.5)
-            response = ser.read_all().decode('latin1', errors='ignore')
+            if not no_prompt:
+                # Get a fresh prompt
+                if verbose:
+                    print("Getting monitor prompt...")
+                ser.write(b'\r')
+                ser.flush()
+                time.sleep(0.5)
+                response = ser.read_all().decode('latin1', errors='ignore')
 
-            if verbose:
-                print(f"Response: {repr(response)}")
+                if verbose:
+                    print(f"Response: {repr(response)}")
 
-            if '> ' not in response:
-                print("ERROR: Monitor not responding (no prompt)")
-                return 1
+                if '> ' not in response:
+                    print("ERROR: Monitor not responding (no prompt)")
+                    return 1
 
-            if verbose:
-                print("Monitor is ready")
+                if verbose:
+                    print("Monitor is ready")
 
-            # Send L command to start XMODEM receive
-            if verbose:
-                print("Sending 'L' command to monitor...")
-            ser.write(b'L\r')
-            ser.flush()
+                # Send L command to start XMODEM receive
+                if verbose:
+                    print("Sending 'L' command to monitor...")
+                ser.write(b'L\r')
+                ser.flush()
+            else:
+                if verbose:
+                    print("Skipping prompt (--no-prompt mode)")
+                # Give monitor a moment to get ready
+                time.sleep(0.1)
 
             # Transfer file via XMODEM
             xmodem = XModemSender(ser, verbose=verbose)
@@ -269,6 +275,7 @@ Examples:
   %(prog)s program.bin                    # Load only
   %(prog)s program.bin --execute          # Load and execute
   %(prog)s program.bin -p /dev/ttyUSB0 -e # Use different port
+  %(prog)s program.bin --no-prompt        # Skip 'L' command (firmware already waiting)
         """
     )
 
@@ -277,6 +284,8 @@ Examples:
     parser.add_argument('-b', '--baud', type=int, default=9600, help='Baud rate (default: 9600)')
     parser.add_argument('-e', '--execute', action='store_true', help='Execute program after loading')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
+    parser.add_argument('--no-prompt', action='store_true',
+                       help='Skip sending L command (assume monitor already waiting for XMODEM)')
 
     args = parser.parse_args()
 
@@ -285,7 +294,8 @@ Examples:
         port=args.port,
         baud=args.baud,
         execute=args.execute,
-        verbose=args.verbose
+        verbose=args.verbose,
+        no_prompt=args.no_prompt
     )
 
     sys.exit(result)
