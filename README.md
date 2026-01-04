@@ -135,6 +135,94 @@ See `docs/modules/register_interface.md` for complete GPU documentation.
 
 See `colorlight_i5.lpf` for complete pin definitions.
 
+## Monitor Commands
+
+The RetroCPU monitor provides a command-line interface for system control and program loading:
+
+| Command | Syntax | Description |
+|---------|--------|-------------|
+| **E** | `E <addr>` | Examine memory at hex address (e.g., `E 0200`) |
+| **D** | `D <addr> <val>` | Deposit hex value to memory (e.g., `D 0200 42`) |
+| **G** | `G [addr]` | Go to address or BASIC (e.g., `G 0300` or just `G`) |
+| **H** | `H` | Display help with all commands and examples |
+| **L** | `L <addr>` | Load binary program via XMODEM to address (e.g., `L 0300`) |
+| **I** | `I <in> <out>` | Configure I/O sources (0=UART, 1=PS2/Display, 2=Both) |
+| **S** | `S` | Display I/O status and peripheral information |
+
+### Quick Examples
+
+```bash
+# Examine memory
+> E 0200
+0200: 00
+
+# Write to memory
+> D 0200 4C
+0200: 4C
+
+# Upload binary program via XMODEM
+> L 0300
+Ready to receive XMODEM. Start transfer now...
+[Send file via terminal emulator's XMODEM feature]
+..................
+Transfer complete
+> G 0300
+
+# Configure I/O for standalone operation (PS/2 keyboard + HDMI display)
+> I 1 1
+I/O Config: IN=PS2, OUT=Display
+
+# Check system status
+> S
+I/O Status:
+  Input:  PS/2
+  Output: Display
+Peripherals:
+  UART:    9600 baud, TX ready, RX empty
+  PS/2:    No data
+  Display: Ready
+
+# Return to UART mode
+> I 0 0
+I/O Config: IN=UART, OUT=UART
+```
+
+### Program Loading
+
+The monitor supports multiple ways to load programs:
+
+1. **XMODEM Binary Upload** (recommended for compiled programs):
+   - Compile 6502 assembly to binary
+   - Use `L <address>` command in monitor
+   - Send file via terminal emulator's XMODEM feature
+   - Execute with `G <address>`
+
+2. **BASIC Program Pasting**:
+   - Enter BASIC with `G` command
+   - Enable XON/XOFF flow control in terminal
+   - Paste BASIC source code
+   - Run with `RUN` command
+
+3. **Manual Entry**:
+   - Use `D` command to deposit bytes one at a time
+   - Use `E` command to verify
+
+See [docs/user_guides/program_loading.md](docs/user_guides/program_loading.md) for detailed instructions.
+
+### I/O Configuration Modes
+
+The system supports flexible I/O routing:
+
+| Mode | Input | Output | Use Case |
+|------|-------|--------|----------|
+| `I 0 0` | UART | UART | **Development** (default) - PC connection |
+| `I 1 1` | PS/2 | Display | **Standalone** - No PC required |
+| `I 2 2` | Both | Both | **Debug** - Maximum flexibility |
+| `I 0 1` | UART | Display | **BASIC development** - Paste code, view on display |
+| `I 1 0` | PS/2 | UART | **Session logging** - Keyboard input, log to PC |
+
+See [docs/user_guides/io_configuration.md](docs/user_guides/io_configuration.md) for complete guide.
+
 ## Development Workflow
 
 This project follows **Test-Driven Development (TDD)**:
@@ -265,7 +353,11 @@ See [specs/001-6502-fpga-microcomputer/tasks.md](specs/001-6502-fpga-microcomput
 - ✅ 64 KB memory system with RAM/ROM
 - ✅ DVI/HDMI GPU (640×480@60Hz, 40/80-column modes, 8 colors, cursor)
 - ✅ UART serial interface (9600 baud)
+- ✅ PS/2 keyboard interface with ASCII translation
 - ✅ Monitor firmware with memory commands
+- ✅ XMODEM binary program upload via UART
+- ✅ Flexible I/O configuration (UART/PS2/Display routing)
+- ✅ XON/XOFF flow control for BASIC program pasting
 - ✅ Open-source toolchain (Yosys, nextpnr-ecp5)
 
 ### Recent Milestones

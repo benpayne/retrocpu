@@ -30,7 +30,7 @@
 
 module uart_rx #(
     parameter CLK_FREQ = 25000000,  // System clock frequency (Hz)
-    parameter BAUD_RATE = 115200     // Baud rate (bits/second)
+    parameter BAUD_RATE = 9600       // Baud rate (bits/second)
 ) (
     input  wire clk,          // System clock
     input  wire rst,          // Synchronous reset (active high)
