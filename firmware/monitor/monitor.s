@@ -79,8 +79,6 @@ XMODEM_CHECKSUM  = $26  ; Calculated checksum
 XMODEM_ADDR_LO   = $27  ; Current write address low
 XMODEM_ADDR_HI   = $28  ; Current write address high
 XMODEM_BYTE_CNT  = $29  ; Byte counter in current packet
-XMODEM_LAST_BYTE = $2C  ; Last byte received (for debugging)
-XMODEM_TO_LOC    = $2D  ; Timeout location (for debugging)
 TIMEOUT_COUNTER  = $2E  ; Timeout loop counter (preserves Y register)
 
 ; PS/2 Translation State (Phase 4)
@@ -244,17 +242,8 @@ MAIN_LOOP:
     JMP CMD_MODE
 @TRY_M_LOWER:
     CMP #'m'
-    BNE @TRY_T
-    JMP CMD_MODE
-
-@TRY_T:
-    CMP #'T'           ; Test buffer (receive 26 bytes and echo)
-    BNE @TRY_T_LOWER
-    JMP CMD_TEST_BUFFER
-@TRY_T_LOWER:
-    CMP #'t'
     BNE @TRY_I
-    JMP CMD_TEST_BUFFER
+    JMP CMD_MODE
 
 @TRY_I:
     CMP #'I'           ; I/O configuration
@@ -285,65 +274,6 @@ MAIN_LOOP:
 
     ; Unknown command
 @UNKNOWN:
-    ; Save the received character
-    STA TEMP
-
-    ; Print "Received: '"
-    LDX #0
-@PRINT_RX_PREFIX:
-    LDA RX_DEBUG_PREFIX,X
-    BEQ @PRINT_CHAR
-    JSR CHROUT
-    INX
-    BNE @PRINT_RX_PREFIX
-
-@PRINT_CHAR:
-    ; Print the actual character
-    LDA TEMP
-    JSR CHROUT
-
-    ; Print "' (0x"
-    LDX #0
-@PRINT_HEX_PREFIX:
-    LDA HEX_PREFIX,X
-    BEQ @PRINT_HEX
-    JSR CHROUT
-    INX
-    BNE @PRINT_HEX_PREFIX
-
-@PRINT_HEX:
-    ; Print hex value (high nibble)
-    LDA TEMP
-    LSR A
-    LSR A
-    LSR A
-    LSR A
-    CMP #$0A
-    BCC @HIGH_DIGIT
-    ADC #6          ; Convert to A-F
-@HIGH_DIGIT:
-    ADC #'0'
-    JSR CHROUT
-
-    ; Print hex value (low nibble)
-    LDA TEMP
-    AND #$0F
-    CMP #$0A
-    BCC @LOW_DIGIT
-    ADC #6          ; Convert to A-F
-@LOW_DIGIT:
-    ADC #'0'
-    JSR CHROUT
-
-    ; Print ")" and newline
-    LDA #')'
-    JSR CHROUT
-    LDA #$0D
-    JSR CHROUT
-    LDA #$0A
-    JSR CHROUT
-
-    ; Now print "Unknown command"
     LDX #0
 @UNKNOWN_LOOP:
     LDA UNKNOWN_MSG,X
@@ -610,87 +540,17 @@ CMD_LOAD:
     JMP MAIN_LOOP
 
 ; ============================================================================
-; CMD_TEST_BUFFER - Test UART buffer by receiving 26 bytes and echoing them
-; Diagnostic command to check for dropped bytes
-; ============================================================================
-CMD_TEST_BUFFER:
-    ; Print prompt
-    LDX #0
-@PROMPT_LOOP:
-    LDA TEST_PROMPT_MSG,X
-    BEQ @START_RECEIVE
-    JSR CHROUT
-    INX
-    BNE @PROMPT_LOOP
-
-@START_RECEIVE:
-    ; Receive 26 bytes into buffer at $0200
-    LDY #0              ; Counter for received bytes
-
-@RECEIVE_LOOP:
-    JSR CHRIN           ; Wait for a byte (no timeout, blocking)
-    STA $0200,Y         ; Store in buffer
-    INY
-    CPY #26             ; Got 26 bytes?
-    BNE @RECEIVE_LOOP
-
-    ; Print newline
-    LDA #$0D
-    JSR CHROUT
-    LDA #$0A
-    JSR CHROUT
-
-    ; Echo the buffer
-    LDY #0
-@ECHO_LOOP:
-    LDA $0200,Y
-    JSR CHROUT
-    INY
-    CPY #26
-    BNE @ECHO_LOOP
-
-    ; Print newline
-    LDA #$0D
-    JSR CHROUT
-    LDA #$0A
-    JSR CHROUT
-
-    JMP MAIN_LOOP
-
-; ============================================================================
 ; XMODEM_RECEIVE - Receive binary data via XMODEM protocol
 ; Phase 3 - T016-T021
 ; Output: A = 0 for success, non-zero for error
 ; ============================================================================
 XMODEM_RECEIVE:
-    ; Save current output mode and set to Display only for debug
-    LDA IO_OUTPUT_MODE
-    PHA                 ; Save on stack
-    LDA #1              ; Mode 1 = Display only (faster, no UART blocking)
-    STA IO_OUTPUT_MODE
-
-    ; DEBUG: Print test message to display
-    LDX #0
-@DEBUG_LOOP:
-    LDA DEBUG_START_MSG,X
-    BEQ @DEBUG_DONE
-    JSR CHROUT
-    INX
-    BNE @DEBUG_LOOP
-@DEBUG_DONE:
-
     ; Send initial NAK to start transfer
     LDA #NAK
     JSR UART_SEND
 
 @WAIT_PKT:
-    ; Reset byte counter for this packet
-    LDA #0
-    STA XMODEM_BYTE_CNT
-
-    ; Wait for SOH or EOT (Location 1)
-    LDA #1
-    STA XMODEM_TO_LOC
+    ; Wait for SOH or EOT
     JSR CHRIN_TIMEOUT
     BCS @GOTO_TIMEOUT
 
@@ -701,11 +561,6 @@ XMODEM_RECEIVE:
     ; EOT received - send ACK and complete
     LDA #ACK
     JSR UART_SEND
-
-    ; Restore output mode
-    PLA
-    STA IO_OUTPUT_MODE
-
     LDA #0              ; Success
     RTS
 
@@ -719,31 +574,19 @@ XMODEM_RECEIVE:
     JMP @GOTO_BAD_HEADER
 
 @SOH_OK:
-    ; SOH received (byte 0) - increment counter
-    INC XMODEM_BYTE_CNT
-
-    ; Receive packet number (Location 2)
-    LDA #2
-    STA XMODEM_TO_LOC
+    ; Receive packet number
     JSR CHRIN_TIMEOUT
     BCS @GOTO_TIMEOUT
-    INC XMODEM_BYTE_CNT  ; Byte 1 received
     CMP XMODEM_PKT_NUM
-    BNE @GOTO_BAD_PKT_2
+    BNE @GOTO_BAD_PKT
     STA TEMP            ; Save packet number
 
-    ; Receive packet number complement (Location 3)
-    LDA #3
-    STA XMODEM_TO_LOC
+    ; Receive packet number complement
     JSR CHRIN_TIMEOUT
     BCS @GOTO_TIMEOUT
-    INC XMODEM_BYTE_CNT  ; Byte 2 received
     EOR #$FF
     CMP TEMP
-    BEQ @PKT_NUM_OK
-
-@GOTO_BAD_PKT_2:
-    JMP @BAD_PKT_NUM
+    BNE @GOTO_BAD_PKT
 
 @PKT_NUM_OK:
     ; Receive 128 data bytes
@@ -752,12 +595,9 @@ XMODEM_RECEIVE:
     STA XMODEM_CHECKSUM  ; Initialize checksum
 
 @RECV_DATA:
-    ; Receive data byte (Location 4)
-    LDA #4
-    STA XMODEM_TO_LOC
+    ; Receive data byte
     JSR CHRIN_TIMEOUT
     BCS @GOTO_TIMEOUT
-    INC XMODEM_BYTE_CNT  ; Increment for each data byte (bytes 3-130)
     STA XMODEM_BUFFER,Y
 
     ; Add to checksum
@@ -769,59 +609,12 @@ XMODEM_RECEIVE:
     CPY #128
     BNE @RECV_DATA
 
-    ; Receive checksum (Location 5)
-    LDA #5
-    STA XMODEM_TO_LOC
+    ; Receive checksum
     JSR CHRIN_TIMEOUT
-    BCC @CHKSUM_OK
-    JMP @GOTO_TIMEOUT
-
-@CHKSUM_OK:
-    INC XMODEM_BYTE_CNT  ; Byte 132 (checksum) received
-
-    ; DEBUG: Show checksum comparison
-    PHA                  ; Save received checksum
-    LDA #'C'
-    JSR CHROUT
-    LDA #'K'
-    JSR CHROUT
-    LDA #' '
-    JSR CHROUT
-    LDA #'R'
-    JSR CHROUT
-    LDA #'='
-    JSR CHROUT
-    PLA                  ; Restore received checksum
-    PHA
-    JSR PRINT_HEX       ; Show received
-    LDA #' '
-    JSR CHROUT
-    LDA #'E'
-    JSR CHROUT
-    LDA #'='
-    JSR CHROUT
-    LDA XMODEM_CHECKSUM
-    JSR PRINT_HEX       ; Show expected (calculated)
-    LDA #$0D
-    JSR CHROUT
-    LDA #$0A
-    JSR CHROUT
-
-    PLA                  ; Restore received checksum
+    BCS @GOTO_TIMEOUT
     CMP XMODEM_CHECKSUM
     BNE @GOTO_BAD_CHKSUM
-    JMP @CHECKSUM_GOOD   ; Checksum matches - skip error labels
 
-@GOTO_BAD_PKT:
-    JMP @BAD_PKT_NUM
-
-@GOTO_BAD_CHKSUM:
-    JMP @BAD_CHECKSUM
-
-@GOTO_BAD_HEADER:
-    JMP @BAD_HEADER
-
-@CHECKSUM_GOOD:
     ; Checksum good - copy data to target address
     LDY #0
 @COPY_DATA:
@@ -853,71 +646,19 @@ XMODEM_RECEIVE:
 
     JMP @WAIT_PKT
 
+@GOTO_BAD_PKT:
+    JMP @BAD_PKT_NUM
+
+@GOTO_BAD_CHKSUM:
+    JMP @BAD_CHECKSUM
+
+@GOTO_BAD_HEADER:
+    JMP @BAD_HEADER
+
 @BAD_HEADER:
-    LDA #'E'
-    JSR CHROUT
-    LDA #'R'
-    JSR CHROUT
-    LDA #'R'
-    JSR CHROUT
-    LDA #':'
-    JSR CHROUT
-    LDA #'H'            ; Header error
-    JSR CHROUT
-    LDA #$0D
-    JSR CHROUT
-    LDA #$0A
-    JSR CHROUT
-    JMP @SEND_NAK
-
 @BAD_PKT_NUM:
-    LDA #'E'
-    JSR CHROUT
-    LDA #'R'
-    JSR CHROUT
-    LDA #'R'
-    JSR CHROUT
-    LDA #':'
-    JSR CHROUT
-    LDA #'P'            ; Packet number error
-    JSR CHROUT
-    LDA #'='
-    JSR CHROUT
-    LDA TEMP            ; Show the packet number we received
-    JSR PRINT_HEX
-    LDA #' '
-    JSR CHROUT
-    LDA #'E'
-    JSR CHROUT
-    LDA #'='
-    JSR CHROUT
-    LDA XMODEM_PKT_NUM  ; Show what we expected
-    JSR PRINT_HEX
-    LDA #$0D
-    JSR CHROUT
-    LDA #$0A
-    JSR CHROUT
-    JMP @SEND_NAK
-
 @BAD_CHECKSUM:
-    LDA #'E'
-    JSR CHROUT
-    LDA #'R'
-    JSR CHROUT
-    LDA #'R'
-    JSR CHROUT
-    LDA #':'
-    JSR CHROUT
-    LDA #'C'            ; Checksum error
-    JSR CHROUT
-    LDA #$0D
-    JSR CHROUT
-    LDA #$0A
-    JSR CHROUT
-    JMP @SEND_NAK
-
-@SEND_NAK:
-    ; Send NAK immediately
+    ; Send NAK and retry
     LDA #NAK
     JSR UART_SEND
 
@@ -930,11 +671,6 @@ XMODEM_RECEIVE:
     ; Too many retries - abort
     LDA #CAN
     JSR UART_SEND
-
-    ; Restore output mode
-    PLA
-    STA IO_OUTPUT_MODE
-
     LDA #1              ; Error
     RTS
 
@@ -950,35 +686,6 @@ XMODEM_RECEIVE:
     JMP @WAIT_PKT
 
 @TIMEOUT:
-    ; DEBUG: Show timeout with location, byte count, and last byte received
-    LDA #'T'
-    JSR CHROUT
-    LDA #'O'
-    JSR CHROUT
-    ; Display location ID
-    LDA XMODEM_TO_LOC
-    CLC
-    ADC #'0'            ; Convert to ASCII digit
-    JSR CHROUT
-    LDA #' '
-    JSR CHROUT
-    ; Display byte count in hex
-    LDA XMODEM_BYTE_CNT
-    JSR PRINT_HEX
-    LDA #' '
-    JSR CHROUT
-    LDA #'L'
-    JSR CHROUT
-    LDA #'='
-    JSR CHROUT
-    ; Display last byte received in hex
-    LDA XMODEM_LAST_BYTE
-    JSR PRINT_HEX
-    LDA #$0D
-    JSR CHROUT
-    LDA #$0A
-    JSR CHROUT
-
     ; Timeout - send NAK and retry
     LDA #NAK
     JSR UART_SEND
@@ -986,20 +693,15 @@ XMODEM_RECEIVE:
     INC XMODEM_RETRY
     LDA XMODEM_RETRY
     CMP #10
-    BCC @RETRY_OK2
+    BCC @TIMEOUT_RETRY_OK
 
     ; Too many retries - abort
     LDA #CAN
     JSR UART_SEND
-
-    ; Restore output mode
-    PLA
-    STA IO_OUTPUT_MODE
-
     LDA #1              ; Error
     RTS
 
-@RETRY_OK2:
+@TIMEOUT_RETRY_OK:
     JMP @WAIT_PKT
 
 ; ============================================================================
@@ -1672,7 +1374,6 @@ CHRIN_TIMEOUT:
 
 @DATA_READY:
     LDA UART_DATA
-    STA XMODEM_LAST_BYTE  ; Save for debugging
     CLC
     RTS
 
@@ -2000,12 +1701,6 @@ LCD_MSG_LINE1:
 LCD_MSG_LINE2:
     .byte "Monitor v2.0    ", 0
 
-RX_DEBUG_PREFIX:
-    .byte "Received: '", 0
-
-HEX_PREFIX:
-    .byte "' (0x", 0
-
 UNKNOWN_MSG:
     .byte "Unknown command", $0D, $0A
     .byte 0
@@ -2055,10 +1750,6 @@ LOAD_SUCCESS_MSG:
 
 LOAD_ERROR_MSG:
     .byte "Transfer failed!", $0D, $0A
-    .byte 0
-
-TEST_PROMPT_MSG:
-    .byte "Waiting for 26 bytes...", $0D, $0A
     .byte 0
 
 INVALID_INPUT_MSG:
