@@ -69,7 +69,9 @@ module gpu_core(
     output wire [7:0]  blue,            // Blue channel (8-bit)
     output wire        hsync,           // Horizontal sync (active low)
     output wire        vsync,           // Vertical sync (active low)
-    output wire        video_active     // High during visible region (optional)
+    output wire        video_active,    // High during visible region (optional)
+    output wire [9:0]  h_count,         // Horizontal counter (for graphics GPU)
+    output wire [9:0]  v_count          // Vertical counter (for graphics GPU)
 );
 
     //==========================================================================

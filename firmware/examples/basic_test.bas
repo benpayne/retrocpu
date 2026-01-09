@@ -1,0 +1,43 @@
+10 REM ===================================
+20 REM RETROCPU BASIC COMPREHENSIVE TEST
+30 REM ===================================
+40 REM
+50 REM This program tests various BASIC features
+60 REM and demonstrates the flow control system.
+70 REM
+80 PRINT "RETROCPU BASIC TEST SUITE"
+90 PRINT "========================="
+100 PRINT ""
+110 REM
+120 REM Test 1: Arithmetic
+130 PRINT "TEST 1: ARITHMETIC"
+140 PRINT "10 + 20 = "; 10 + 20
+150 PRINT "50 - 15 = "; 50 - 15
+160 PRINT "7 * 8 = "; 7 * 8
+170 PRINT "100 / 4 = "; 100 / 4
+180 PRINT ""
+190 REM
+200 REM Test 2: String handling
+210 PRINT "TEST 2: STRINGS"
+220 LET A$ = "HELLO"
+230 LET B$ = "WORLD"
+240 PRINT A$; " "; B$; "!"
+250 PRINT ""
+260 REM
+270 REM Test 3: Loops
+280 PRINT "TEST 3: LOOPS"
+290 FOR I = 1 TO 5
+300   PRINT "  ITERATION "; I
+310 NEXT I
+320 PRINT ""
+330 REM
+340 REM Test 4: Conditionals
+350 PRINT "TEST 4: CONDITIONALS"
+360 LET X = 42
+370 IF X > 40 THEN PRINT "  X IS GREATER THAN 40"
+380 IF X < 50 THEN PRINT "  X IS LESS THAN 50"
+390 IF X = 42 THEN PRINT "  X EQUALS 42"
+400 PRINT ""
+410 REM
+420 PRINT "ALL TESTS COMPLETE!"
+430 END

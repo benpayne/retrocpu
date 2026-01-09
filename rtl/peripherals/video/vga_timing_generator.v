@@ -1,17 +1,21 @@
 /*
-VGA Timing Generator for 640x480@60Hz
+VGA Timing Generator for 640x400@70Hz
 retrocpu DVI Character Display GPU
 
 Generates horizontal and vertical sync signals and timing counters
-for VGA 640x480@60Hz (25.175 MHz pixel clock, using 25 MHz in practice)
+for VGA 640x400@70Hz (25.175 MHz pixel clock, using 25 MHz in practice)
 
 Timing Parameters (from VESA standard):
 - Horizontal: 640 visible + 16 front porch + 96 sync + 48 back porch = 800 total
-- Vertical: 480 visible + 10 front porch + 2 sync + 33 back porch = 525 total
-- Refresh rate: 60 Hz
+- Vertical: 400 visible + 12 front porch + 2 sync + 35 back porch = 449 total
+- Refresh rate: 70.087 Hz
 - Pixel clock: 25.175 MHz (25 MHz acceptable)
 
+Note: 640x400 allows simple 2x/4x line doubling for 200-line and 100-line graphics modes
+without complex division, improving timing and eliminating multiplier usage.
+
 Created: 2025-12-28
+Updated: 2026-01-06 (switched to 640x400 for simpler scaling)
 */
 
 module vga_timing_generator(
@@ -28,7 +32,7 @@ module vga_timing_generator(
 );
 
 //=============================================================================
-// VGA 640x480@60Hz Timing Parameters
+// VGA 640x400@70Hz Timing Parameters
 //=============================================================================
 
 // Horizontal timing (in pixel clocks)
@@ -39,17 +43,17 @@ localparam H_BACK       = 48;
 localparam H_TOTAL      = H_VISIBLE + H_FRONT + H_SYNC + H_BACK; // 800
 
 // Vertical timing (in lines)
-localparam V_VISIBLE    = 480;
-localparam V_FRONT      = 10;
-localparam V_SYNC       = 2;
-localparam V_BACK       = 33;
-localparam V_TOTAL      = V_VISIBLE + V_FRONT + V_SYNC + V_BACK; // 525
+localparam V_VISIBLE    = 400;  // Changed from 480 for 640x400 mode
+localparam V_FRONT      = 12;   // Changed from 10
+localparam V_SYNC       = 2;    // Same
+localparam V_BACK       = 35;   // Changed from 33
+localparam V_TOTAL      = V_VISIBLE + V_FRONT + V_SYNC + V_BACK; // 449
 
 // Sync pulse boundaries
 localparam H_SYNC_START = H_VISIBLE + H_FRONT;                    // 656
 localparam H_SYNC_END   = H_VISIBLE + H_FRONT + H_SYNC;           // 752
-localparam V_SYNC_START = V_VISIBLE + V_FRONT;                    // 490
-localparam V_SYNC_END   = V_VISIBLE + V_FRONT + V_SYNC;           // 492
+localparam V_SYNC_START = V_VISIBLE + V_FRONT;                    // 412
+localparam V_SYNC_END   = V_VISIBLE + V_FRONT + V_SYNC;           // 414
 
 //=============================================================================
 // Counter Logic
