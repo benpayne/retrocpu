@@ -32,6 +32,7 @@ RTL_SOURCES = \
 	$(RTL_DIR)/peripherals/uart/uart.v \
 	$(RTL_DIR)/peripherals/uart/uart_tx.v \
 	$(RTL_DIR)/peripherals/uart/uart_rx.v \
+	$(RTL_DIR)/peripherals/uart/uart_rx_fifo.v \
 	$(RTL_DIR)/peripherals/lcd/lcd_controller.v \
 	$(RTL_DIR)/peripherals/lcd/lcd_timing.v \
 	$(RTL_DIR)/peripherals/lcd/lcd_init_fsm.v \
@@ -48,6 +49,12 @@ RTL_SOURCES = \
 	$(RTL_DIR)/peripherals/video/vga_timing_generator.v \
 	$(RTL_DIR)/peripherals/video/dvi_transmitter.v \
 	$(RTL_DIR)/peripherals/video/tmds_encoder.v \
+	$(RTL_DIR)/peripherals/video/gpu_graphics_vram.v \
+	$(RTL_DIR)/peripherals/video/gpu_graphics_palette.v \
+	$(RTL_DIR)/peripherals/video/gpu_graphics_registers.v \
+	$(RTL_DIR)/peripherals/video/gpu_pixel_renderer.v \
+	$(RTL_DIR)/peripherals/video/gpu_graphics_core.v \
+	$(RTL_DIR)/peripherals/video/gpu_mux.v \
 	$(RTL_DIR)/system/$(TOP).v
 
 # Arlet 6502 core (commented out - replaced by M65C02)
@@ -74,7 +81,7 @@ OPENFPGALOADER = openFPGALoader
 
 # Yosys synthesis flags
 YOSYS_FLAGS = -q -l $(SYNTH_DIR)/yosys.log
-YOSYS_INCLUDE = -I$(RTL_DIR)/cpu/m65c02
+YOSYS_INCLUDE = -I$(RTL_DIR)/cpu/m65c02 -I$(RTL_DIR)/peripherals/video
 
 # nextpnr flags
 NEXTPNR_FLAGS = \
@@ -86,6 +93,9 @@ NEXTPNR_FLAGS = \
 	--textcfg $(CONFIG) \
 	--timing-allow-fail \
 	--ignore-loops \
+	--threads 16 \
+	--parallel-refine \
+	--seed 1 \
 	--log $(PNR_DIR)/nextpnr.log
 
 # Targets

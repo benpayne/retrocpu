@@ -283,6 +283,12 @@ module soc_top (
     wire [1:0] tmds_green_parallel;
     wire [1:0] tmds_blue_parallel;
 
+    // GPU debug signals for LEDs
+    wire gpu_debug_display_mode;
+    wire gpu_debug_gfx_gpu_cs;
+    wire gpu_debug_char_gpu_cs;
+    wire gpu_debug_vsync;
+
     gpu_top gpu_inst (
         // Clock and reset
         .clk_cpu(clk_25mhz),              // CPU clock domain
@@ -291,7 +297,7 @@ module soc_top (
         .rst_n(gpu_rst_n),                // Active-low reset (wait for PLL lock)
 
         // CPU bus interface
-        .addr(cpu_addr[3:0]),             // Register address (0xC010-0xC016)
+        .addr(cpu_addr[7:0]),             // Register address (0xC0xx-0xC1xx)
         .data_in(cpu_data_out),           // Data from CPU
         .data_out(gpu_data_out),          // Data to CPU
         .we(gpu_cs && mem_we),            // Write enable at MC=7
@@ -301,7 +307,13 @@ module soc_top (
         .tmds_clk_out(tmds_clk_parallel),
         .tmds_red_out(tmds_red_parallel),
         .tmds_green_out(tmds_green_parallel),
-        .tmds_blue_out(tmds_blue_parallel)
+        .tmds_blue_out(tmds_blue_parallel),
+
+        // Debug outputs
+        .debug_display_mode(gpu_debug_display_mode),
+        .debug_gfx_gpu_cs(gpu_debug_gfx_gpu_cs),
+        .debug_char_gpu_cs(gpu_debug_char_gpu_cs),
+        .debug_vsync(gpu_debug_vsync)
     );
 
     // ========================================================================
@@ -450,34 +462,16 @@ module soc_top (
     // );
 
     // ========================================================================
-    // Debug LEDs
+    // Debug LEDs - GPU Status Indicators
     // ========================================================================
+    // LED[0]: Display mode (0=character, 1=graphics)
+    // LED[1]: Graphics GPU chip select active (accessing $C100-$C10F)
+    // LED[2]: Character GPU chip select active (accessing $C010-$C01F)
+    // LED[3]: VSync signal (blinks at 60Hz when display is active)
 
-    // LED indicators for debugging
-    // Debug: Capture write attempts to address $0010
-    reg [7:0] debug_addr_low;
-    reg debug_write_seen;
-    reg [7:0] debug_data_written;
-    reg [7:0] debug_data_read;
-
-    always @(posedge clk_25mhz) begin
-        if (system_rst) begin
-            debug_addr_low <= 8'h00;
-            debug_write_seen <= 1'b0;
-            debug_data_written <= 8'h00;
-            debug_data_read <= 8'h00;
-        end else if (cpu_addr == 16'h0010 && ram_cs && mem_we) begin
-            debug_addr_low <= cpu_addr[7:0];
-            debug_write_seen <= 1'b1;
-            debug_data_written <= cpu_data_out;
-        end else if (cpu_addr == 16'h0010 && ram_cs && (cpu_io_op == 2'b10 || cpu_io_op == 2'b11)) begin
-            debug_data_read <= cpu_data_in_mux;
-        end
-    end
-
-    assign led[0] = debug_write_seen;         // Saw write to $0010
-    assign led[1] = (debug_data_written != 8'h00);  // Data written was non-zero
-    assign led[2] = (debug_data_read == debug_data_written);  // Read matches write
-    assign led[3] = mem_we;                    // Current memory write enable
+    assign led[0] = gpu_debug_display_mode;   // 1=Graphics mode, 0=Character mode
+    assign led[1] = gpu_debug_gfx_gpu_cs;     // Graphics GPU accessed
+    assign led[2] = gpu_debug_char_gpu_cs;    // Character GPU accessed
+    assign led[3] = gpu_debug_vsync;          // VSync pulse (60Hz blink)
 
 endmodule

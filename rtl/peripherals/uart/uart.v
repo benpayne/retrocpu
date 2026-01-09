@@ -54,13 +54,12 @@ module uart #(
     reg [7:0] tx_data;
     wire tx_busy;
 
-    // RX control signals
+    // RX control signals (with FIFO)
     wire [7:0] rx_data_wire;
-    wire rx_ready_sticky;    // Sticky flag from uart_rx (HIGH until next reception)
-    reg rx_ready_prev;       // Previous value for edge detection
-    reg [7:0] rx_data_reg;   // Captured RX data
-    reg rx_ready_flag;       // CPU-visible flag (set on edge, cleared on read)
-    reg [7:0] reset_holdoff; // Ignore rx_ready edges during reset recovery
+    wire rx_ready_flag;
+    wire fifo_full;
+    wire fifo_empty;
+    wire rd_en;
 
     // UART TX instance
     uart_tx #(
@@ -75,49 +74,24 @@ module uart #(
         .tx_busy(tx_busy)
     );
 
-    // UART RX instance
-    uart_rx #(
+    // UART RX instance with FIFO (16 bytes deep)
+    uart_rx_fifo #(
         .CLK_FREQ(CLK_FREQ),
-        .BAUD_RATE(BAUD_RATE)
-    ) uart_rx_inst (
+        .BAUD_RATE(BAUD_RATE),
+        .FIFO_DEPTH(16)
+    ) uart_rx_fifo_inst (
         .clk(clk),
         .rst(rst),
         .rx(rx),
+        .rd_en(rd_en),
         .rx_data(rx_data_wire),
-        .rx_ready(rx_ready_sticky)  // Sticky flag from uart_rx
+        .rx_ready(rx_ready_flag),
+        .fifo_full(fifo_full),
+        .fifo_empty(fifo_empty)
     );
 
-    // RX edge detection and data capture
-    // Convert sticky rx_ready to single-shot capture via edge detection
-    always @(posedge clk) begin
-        if (rst) begin
-            rx_ready_prev <= 1'b0;
-            rx_data_reg <= 8'h00;
-            rx_ready_flag <= 1'b0;
-            reset_holdoff <= 8'd255;   // Hold off edge detection for 255 cycles after reset
-        end else begin
-            // Count down holdoff
-            if (reset_holdoff != 0) begin
-                reset_holdoff <= reset_holdoff - 1;
-            end
-
-            // Track previous state of rx_ready
-            rx_ready_prev <= rx_ready_sticky;
-
-            // Detect rising edge (0 → 1 transition) = new data arrived
-            // Only capture if flag is currently clear (prevents re-capture of same byte)
-            // Ignore edges during reset holdoff period
-            if (rx_ready_sticky && !rx_ready_prev && rx_ready_flag == 1'b0 && reset_holdoff == 0) begin
-                rx_data_reg <= rx_data_wire;  // Capture data
-                rx_ready_flag <= 1'b1;        // Set flag for CPU
-            end
-
-            // CPU reading DATA register clears the flag
-            if (cs && !we && addr == ADDR_DATA) begin
-                rx_ready_flag <= 1'b0;
-            end
-        end
-    end
+    // RX Read logic - assert rd_en when CPU reads DATA register
+    assign rd_en = (cs && !we && addr == ADDR_DATA);
 
     // TX Write logic
     always @(posedge clk) begin
@@ -153,8 +127,8 @@ module uart #(
 
         case (addr)
             ADDR_DATA: begin
-                // Read RX data register
-                data_out = rx_data_reg;
+                // Read RX data directly from FIFO
+                data_out = rx_data_wire;
             end
             ADDR_STATUS: begin
                 // Read status register - assign all 8 bits at once

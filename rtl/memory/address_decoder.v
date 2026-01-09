@@ -10,8 +10,12 @@
 //   0x0000-0x7FFF : RAM (32 KB)
 //   0x8000-0xBFFF : BASIC ROM (16 KB)
 //   0xC000-0xC00F : UART (16 bytes)
-//   0xC010-0xC01F : GPU (16 bytes, using 7: 0xC010-0xC016)
-//   0xC020-0xDFFF : Reserved I/O
+//   0xC010-0xC01F : GPU Character Mode (16 bytes, using 7: 0xC010-0xC016)
+//   0xC020-0xC0FF : Reserved I/O
+//   0xC100-0xC10F : GPU Graphics Mode (16 bytes, using 14: 0xC100-0xC10D)
+//   0xC110-0xC1FF : LCD (240 bytes)
+//   0xC200-0xC2FF : PS/2 (256 bytes)
+//   0xC300-0xDFFF : Reserved I/O
 //   0xE000-0xFFFF : Monitor ROM (8 KB)
 //
 // Features:
@@ -32,8 +36,8 @@ module address_decoder (
     // I/O region selects
     output wire io_cs,                // I/O region select (0xC000-0xDFFF)
     output wire uart_cs,              // UART select (0xC000-0xC00F)
-    output wire gpu_cs,               // GPU select (0xC010-0xC01F)
-    output wire lcd_cs,               // LCD select (0xC100-0xC1FF)
+    output wire gpu_cs,               // GPU select (0xC010-0xC01F + 0xC100-0xC10F)
+    output wire lcd_cs,               // LCD select (0xC110-0xC1FF)
     output wire ps2_cs                // PS/2 select (0xC200-0xC2FF)
 );
 
@@ -62,11 +66,13 @@ module address_decoder (
     // UART: 0xC000-0xC00F (addr[11:4] == 0x00)
     assign uart_cs = io_cs && (addr[11:4] == 8'h00);
 
-    // GPU: 0xC010-0xC01F (addr[11:4] == 0x01)
-    assign gpu_cs = io_cs && (addr[11:4] == 8'h01);
+    // GPU: 0xC010-0xC01F (Character) OR 0xC100-0xC10F (Graphics)
+    // Character: addr[11:4] == 0x01
+    // Graphics: addr[11:4] == 0x10
+    assign gpu_cs = io_cs && ((addr[11:4] == 8'h01) || (addr[11:4] == 8'h10));
 
-    // LCD: 0xC1xx (addr[11:8] == 0001)
-    assign lcd_cs = io_cs && (addr[11:8] == 4'h1);
+    // LCD: 0xC110-0xC1FF (addr[11:8] == 1 AND addr[7:4] != 0)
+    assign lcd_cs = io_cs && (addr[11:8] == 4'h1) && (addr[7:4] != 4'h0);
 
     // PS/2: 0xC2xx (addr[11:8] == 0010)
     assign ps2_cs = io_cs && (addr[11:8] == 4'h2);

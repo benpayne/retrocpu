@@ -1,25 +1,31 @@
 //==============================================================================
 // gpu_top.v - Complete GPU Subsystem with DVI Output
 //==============================================================================
-// Project: RetroCPU - DVI Character Display GPU
-// Description: Top-level GPU wrapper integrating character display pipeline
-//              and DVI/TMDS transmission for HDMI/DVI output
+// Project: RetroCPU - DVI Character Display GPU + Graphics GPU
+// Description: Top-level GPU wrapper integrating both character and graphics
+//              display pipelines with DVI/TMDS transmission for HDMI/DVI output
 //
 // Author: RetroCPU Project
 // License: MIT
 // Created: 2025-12-28
+// Updated: 2026-01-04 - Added graphics GPU integration
 //
 // Features:
-//   - Complete GPU subsystem for character display via HDMI/DVI
-//   - Integrates gpu_core (character rendering) and dvi_transmitter (TMDS)
+//   - Dual-mode GPU subsystem: Character text + Bitmap graphics
+//   - Integrates gpu_core (character), gpu_graphics_core (bitmap), gpu_mux
 //   - 640x480@60Hz VGA/DVI output with 8-bit RGB color
-//   - 40-column and 80-column text modes
+//   - Character mode: 40-column and 80-column text
+//   - Graphics modes: 1 BPP, 2 BPP, 4 BPP bitmap graphics
 //   - Memory-mapped register interface for CPU control
 //   - DDR TMDS output for ECP5 FPGA LVDS pins
 //
 // Integrated Modules:
 //   1. gpu_core - Character display pipeline (timing, rendering, registers)
-//   2. dvi_transmitter - TMDS encoding and serialization
+//   2. gpu_graphics_core - Bitmap graphics pipeline (VRAM, palette, rendering)
+//   3. gpu_mux - Display mode multiplexer (text vs graphics)
+//   4. dvi_transmitter - TMDS encoding and serialization
+
+`include "gpu_graphics_params.vh"
 //
 // Clock Domains:
 //   - clk_cpu: CPU/system clock domain (for register access)
@@ -56,7 +62,7 @@ module gpu_top(
     input  wire        rst_n,           // Active-low reset (async, all domains)
 
     // CPU bus interface (clk_cpu domain)
-    input  wire [3:0]  addr,            // Register address offset (0x0-0xF)
+    input  wire [7:0]  addr,            // Register address (full byte: 0x00-0xFF)
     input  wire [7:0]  data_in,         // Data from CPU (for writes)
     output wire [7:0]  data_out,        // Data to CPU (for reads)
     input  wire        we,              // Write enable
@@ -67,26 +73,69 @@ module gpu_top(
     output wire [1:0]  tmds_clk_out,   // TMDS clock channel DDR data
     output wire [1:0]  tmds_red_out,   // TMDS red channel DDR data
     output wire [1:0]  tmds_green_out, // TMDS green channel DDR data
-    output wire [1:0]  tmds_blue_out   // TMDS blue channel DDR data
+    output wire [1:0]  tmds_blue_out,  // TMDS blue channel DDR data
+
+    // Debug outputs for LED indicators
+    output wire        debug_display_mode,  // Current display mode (0=char, 1=graphics)
+    output wire        debug_gfx_gpu_cs,    // Graphics GPU chip select
+    output wire        debug_char_gpu_cs,   // Character GPU chip select
+    output wire        debug_vsync          // VSync signal
 );
 
     //==========================================================================
-    // Internal Signals - GPU Core to DVI Transmitter
+    // Address Decode
     //==========================================================================
 
-    // RGB video signals (8-bit per channel)
-    wire [7:0] rgb_red;                 // Red channel from gpu_core
-    wire [7:0] rgb_green;               // Green channel from gpu_core
-    wire [7:0] rgb_blue;                // Blue channel from gpu_core
+    // Character GPU: addr[7:4] == 4'h1 (0x10-0x1F) → 0xC010-0xC01F
+    // Graphics GPU:  addr[7:4] == 4'h0 (0x00-0x0F) → 0xC100-0xC10F
+    wire char_gpu_cs = (addr[7:4] == 4'h1);
+    wire gfx_gpu_cs  = (addr[7:4] == 4'h0);
 
-    // Sync and control signals
-    wire       hsync;                   // Horizontal sync (active-low from gpu_core)
-    wire       vsync;                   // Vertical sync (active-low from gpu_core)
-    wire       video_active;            // High during visible region
+    //==========================================================================
+    // Internal Signals - Character GPU
+    //==========================================================================
 
-    // Blanking signal for DVI transmitter (inverse of video_active)
+    // RGB video signals from character GPU
+    wire [7:0] char_rgb_red;
+    wire [7:0] char_rgb_green;
+    wire [7:0] char_rgb_blue;
+    wire [7:0] char_data_out;
+
+    //==========================================================================
+    // Internal Signals - Graphics GPU
+    //==========================================================================
+
+    // RGB video signals from graphics GPU
+    wire [7:0] gfx_rgb_red;
+    wire [7:0] gfx_rgb_green;
+    wire [7:0] gfx_rgb_blue;
+    wire [7:0] gfx_data_out;
+    wire       display_mode;            // 0=Character, 1=Graphics (from graphics regs)
+
+    //==========================================================================
+    // Internal Signals - Muxed GPU Output to DVI Transmitter
+    //==========================================================================
+
+    // Final RGB signals after mux (selected by display_mode)
+    wire [7:0] rgb_red;
+    wire [7:0] rgb_green;
+    wire [7:0] rgb_blue;
+
+    // Sync and timing signals (shared by both GPUs, generated by character GPU)
+    wire       hsync;
+    wire       vsync;
+    wire       video_active;
+    wire [9:0] h_count;                 // Horizontal counter for graphics GPU
+    wire [9:0] v_count;                 // Vertical counter for graphics GPU
+
+    // Blanking signal for DVI transmitter
     wire       video_blank;
     assign video_blank = ~video_active;
+
+    // CPU bus data output mux
+    assign data_out = char_gpu_cs ? char_data_out :
+                      gfx_gpu_cs  ? gfx_data_out  :
+                      8'h00;
 
     //==========================================================================
     // Internal Signals - TMDS Output (Positive DDR Pairs)
@@ -103,7 +152,7 @@ module gpu_top(
 
     //--------------------------------------------------------------------------
     // 1. GPU Core - Character Display Pipeline
-    //    Generates RGB video, sync signals, and handles CPU interface
+    //    Generates RGB video, sync signals, timing counters
     //--------------------------------------------------------------------------
     gpu_core gpu_core_inst(
         // Clock and reset
@@ -112,19 +161,79 @@ module gpu_top(
         .rst_n         (rst_n),          // Active-low reset
 
         // CPU bus interface (clk_cpu domain)
-        .addr          (addr),           // Register address (4-bit offset)
+        .addr          (addr[3:0]),      // Register address (4-bit offset)
         .data_in       (data_in),        // Data from CPU
-        .data_out      (data_out),       // Data to CPU
-        .we            (we),             // Write enable
-        .re            (re),             // Read enable
+        .data_out      (char_data_out),  // Data to CPU
+        .we            (char_gpu_cs && we), // Write enable
+        .re            (char_gpu_cs && re), // Read enable
 
         // Video output (clk_pixel domain)
-        .red           (rgb_red),        // Red channel (8-bit)
-        .green         (rgb_green),      // Green channel (8-bit)
-        .blue          (rgb_blue),       // Blue channel (8-bit)
+        .red           (char_rgb_red),   // Red channel (8-bit)
+        .green         (char_rgb_green), // Green channel (8-bit)
+        .blue          (char_rgb_blue),  // Blue channel (8-bit)
         .hsync         (hsync),          // Horizontal sync (active-low)
         .vsync         (vsync),          // Vertical sync (active-low)
-        .video_active  (video_active)    // High during visible region
+        .video_active  (video_active),   // High during visible region
+        .h_count       (h_count),        // Horizontal counter
+        .v_count       (v_count)         // Vertical counter
+    );
+
+    //--------------------------------------------------------------------------
+    // 2. GPU Graphics Core - Bitmap Graphics Pipeline
+    //    Handles VRAM, palette, registers, and pixel rendering
+    //--------------------------------------------------------------------------
+    gpu_graphics_core gpu_graphics_inst(
+        // Clock and reset
+        .clk_cpu       (clk_cpu),        // CPU clock domain
+        .clk_pixel     (clk_pixel),      // Pixel clock (25 MHz)
+        .rst_n         (rst_n),          // Active-low reset
+
+        // CPU register interface
+        .reg_addr      (addr[3:0]),      // Register offset (0x0-0xF)
+        .reg_data_in   (data_in),        // Write data
+        .reg_we        (gfx_gpu_cs && we), // Write enable
+        .reg_re        (gfx_gpu_cs && re), // Read enable
+        .reg_data_out  (gfx_data_out),   // Read data
+
+        // VGA timing inputs (from character GPU timing generator)
+        .h_count       (h_count),        // Horizontal counter
+        .v_count       (v_count),        // Vertical counter
+        .hsync         (hsync),          // Horizontal sync
+        .vsync         (vsync),          // Vertical sync
+        .video_active  (video_active),   // Visible region flag
+
+        // RGB output
+        .rgb_r_out     (gfx_rgb_red),    // Red component
+        .rgb_g_out     (gfx_rgb_green),  // Green component
+        .rgb_b_out     (gfx_rgb_blue),   // Blue component
+
+        // Control outputs
+        .display_mode  (display_mode),   // 0=Character, 1=Graphics
+        .gpu_irq       ()                // VBlank interrupt (unused)
+    );
+
+    //--------------------------------------------------------------------------
+    // 3. GPU Mux - Select between Character and Graphics modes
+    //    Controlled by DISPLAY_MODE register in graphics GPU
+    //--------------------------------------------------------------------------
+    gpu_mux gpu_mux_inst(
+        // Display mode control
+        .display_mode  (display_mode),   // 0=Character, 1=Graphics
+
+        // Character GPU RGB inputs
+        .char_rgb_r    (char_rgb_red),
+        .char_rgb_g    (char_rgb_green),
+        .char_rgb_b    (char_rgb_blue),
+
+        // Graphics GPU RGB inputs
+        .gfx_rgb_r     (gfx_rgb_red),
+        .gfx_rgb_g     (gfx_rgb_green),
+        .gfx_rgb_b     (gfx_rgb_blue),
+
+        // Final RGB outputs (to DVI transmitter)
+        .rgb_r_out     (rgb_red),
+        .rgb_g_out     (rgb_green),
+        .rgb_b_out     (rgb_blue)
     );
 
     //--------------------------------------------------------------------------
@@ -163,6 +272,14 @@ module gpu_top(
     assign tmds_red_out   = tmds_red;
     assign tmds_green_out = tmds_green;
     assign tmds_blue_out  = tmds_blue;
+
+    //==========================================================================
+    // Debug Output Assignments
+    //==========================================================================
+    assign debug_display_mode = display_mode;  // Display mode from graphics GPU
+    assign debug_gfx_gpu_cs   = gfx_gpu_cs;    // Graphics GPU chip select
+    assign debug_char_gpu_cs  = char_gpu_cs;   // Character GPU chip select
+    assign debug_vsync        = vsync;         // VSync signal
 
     //==========================================================================
     // Notes on Signal Conversion
