@@ -59,6 +59,25 @@ async def test_uart_rx_idle_state(dut):
     assert dut.rx_ready.value == 0, "RX ready should remain low when idle"
 
 
+async def wait_for_rx_ready_pulse(dut, expected_data, timeout_cycles=10000):
+    """Wait for rx_ready to pulse and verify data"""
+    timeout = 0
+    while dut.rx_ready.value == 0:
+        await RisingEdge(dut.clk)
+        timeout += 1
+        assert timeout < timeout_cycles, "Timeout waiting for rx_ready"
+
+    # Check received data when rx_ready is HIGH
+    received = int(dut.rx_data.value)
+    assert received == expected_data, f"Expected 0x{expected_data:02x}, received 0x{received:02x}"
+
+    # Wait one more cycle and verify rx_ready clears (pulse behavior)
+    await RisingEdge(dut.clk)
+    assert dut.rx_ready.value == 0, "rx_ready should clear after one-cycle pulse"
+
+    return received
+
+
 @cocotb.test()
 async def test_uart_rx_single_byte(dut):
     """Test receiving a single byte"""
@@ -73,23 +92,14 @@ async def test_uart_rx_single_byte(dut):
     dut.rst.value = 0
     await RisingEdge(dut.clk)
 
+    # Start monitoring for rx_ready pulse in background
+    rx_task = cocotb.start_soon(wait_for_rx_ready_pulse(dut, 0x55))
+
     # Send byte 0x55 (01010101 pattern, good test pattern)
     await send_uart_byte(dut, 0x55)
 
-    # Wait for rx_ready pulse
-    timeout = 0
-    while dut.rx_ready.value == 0:
-        await RisingEdge(dut.clk)
-        timeout += 1
-        assert timeout < 10000, "Timeout waiting for rx_ready"
-
-    # Check received data
-    received = int(dut.rx_data.value)
-    assert received == 0x55, f"Expected 0x55, received 0x{received:02x}"
-
-    # rx_ready should stay high (sticky flag until next reception)
-    await RisingEdge(dut.clk)
-    assert dut.rx_ready.value == 1, "rx_ready should stay high until next reception"
+    # Wait for reception to complete
+    await rx_task
 
 
 @cocotb.test()
@@ -105,18 +115,14 @@ async def test_uart_rx_all_zeros(dut):
     dut.rst.value = 0
     await RisingEdge(dut.clk)
 
+    # Start monitoring for rx_ready pulse
+    rx_task = cocotb.start_soon(wait_for_rx_ready_pulse(dut, 0x00))
+
     # Send 0x00
     await send_uart_byte(dut, 0x00)
 
-    # Wait for rx_ready
-    timeout = 0
-    while dut.rx_ready.value == 0:
-        await RisingEdge(dut.clk)
-        timeout += 1
-        assert timeout < 10000, "Timeout waiting for rx_ready"
-
-    received = int(dut.rx_data.value)
-    assert received == 0x00, f"Expected 0x00, received 0x{received:02x}"
+    # Wait for reception to complete
+    await rx_task
 
 
 @cocotb.test()
@@ -132,18 +138,14 @@ async def test_uart_rx_all_ones(dut):
     dut.rst.value = 0
     await RisingEdge(dut.clk)
 
+    # Start monitoring for rx_ready pulse
+    rx_task = cocotb.start_soon(wait_for_rx_ready_pulse(dut, 0xFF))
+
     # Send 0xFF
     await send_uart_byte(dut, 0xFF)
 
-    # Wait for rx_ready
-    timeout = 0
-    while dut.rx_ready.value == 0:
-        await RisingEdge(dut.clk)
-        timeout += 1
-        assert timeout < 10000, "Timeout waiting for rx_ready"
-
-    received = int(dut.rx_data.value)
-    assert received == 0xFF, f"Expected 0xFF, received 0x{received:02x}"
+    # Wait for reception to complete
+    await rx_task
 
 
 @cocotb.test()
@@ -163,20 +165,14 @@ async def test_uart_rx_ascii_characters(dut):
     test_chars = [0x41, 0x42, 0x43]  # 'A', 'B', 'C'
 
     for expected in test_chars:
+        # Start monitoring for rx_ready pulse
+        rx_task = cocotb.start_soon(wait_for_rx_ready_pulse(dut, expected))
+
         # Send character
         await send_uart_byte(dut, expected)
 
-        # Wait for rx_ready
-        timeout = 0
-        while dut.rx_ready.value == 0:
-            await RisingEdge(dut.clk)
-            timeout += 1
-            assert timeout < 10000, "Timeout waiting for rx_ready"
-
-        # Verify data
-        received = int(dut.rx_data.value)
-        assert received == expected, \
-            f"Expected 0x{expected:02x} ('{chr(expected)}'), received 0x{received:02x}"
+        # Wait for reception to complete
+        await rx_task
 
         # Wait a bit before next character
         await Timer(BIT_PERIOD_NS * 2, unit="ns")
@@ -198,23 +194,14 @@ async def test_uart_rx_back_to_back(dut):
     test_data = [0x48, 0x45, 0x4C, 0x4C, 0x4F]  # "HELLO"
 
     for expected in test_data:
+        # Start monitoring for rx_ready pulse
+        rx_task = cocotb.start_soon(wait_for_rx_ready_pulse(dut, expected))
+
         # Send byte
         await send_uart_byte(dut, expected)
 
-        # Wait for rx_ready
-        timeout = 0
-        while dut.rx_ready.value == 0:
-            await RisingEdge(dut.clk)
-            timeout += 1
-            assert timeout < 10000, f"Timeout waiting for rx_ready (char 0x{expected:02x})"
-
-        # Verify
-        received = int(dut.rx_data.value)
-        assert received == expected, \
-            f"Expected 0x{expected:02x}, received 0x{received:02x}"
-
-        # Let rx_ready pulse complete
-        await RisingEdge(dut.clk)
+        # Wait for reception to complete
+        await rx_task
 
 
 @cocotb.test()
@@ -274,6 +261,22 @@ async def test_uart_rx_stop_bit_check(dut):
     assert dut.rx_ready.value == 0, "Should not set rx_ready with framing error"
 
 
+async def send_uart_byte_custom_baud(dut, data, bit_period_ns):
+    """Send a UART byte with custom baud rate"""
+    # Start bit
+    dut.rx.value = 0
+    await Timer(bit_period_ns, unit="ns")
+
+    # Data bits (LSB first)
+    for i in range(8):
+        dut.rx.value = (data >> i) & 1
+        await Timer(bit_period_ns, unit="ns")
+
+    # Stop bit
+    dut.rx.value = 1
+    await Timer(bit_period_ns, unit="ns")
+
+
 @cocotb.test()
 async def test_uart_rx_baud_rate_tolerance(dut):
     """Test that RX works with slight baud rate variation"""
@@ -287,31 +290,15 @@ async def test_uart_rx_baud_rate_tolerance(dut):
     dut.rst.value = 0
     await RisingEdge(dut.clk)
 
+    # Start monitoring for rx_ready pulse
+    rx_task = cocotb.start_soon(wait_for_rx_ready_pulse(dut, 0xAA))
+
     # Send byte with 2% faster baud rate (simulates clock mismatch)
     bit_period_fast = int(BIT_PERIOD_NS * 0.98)
+    await send_uart_byte_custom_baud(dut, 0xAA, bit_period_fast)
 
-    # Start bit
-    dut.rx.value = 0
-    await Timer(bit_period_fast, unit="ns")
-
-    # Data bits (0xAA = 10101010)
-    for i in range(8):
-        dut.rx.value = (0xAA >> i) & 1
-        await Timer(bit_period_fast, unit="ns")
-
-    # Stop bit
-    dut.rx.value = 1
-    await Timer(bit_period_fast, unit="ns")
-
-    # Should still receive correctly
-    timeout = 0
-    while dut.rx_ready.value == 0:
-        await RisingEdge(dut.clk)
-        timeout += 1
-        assert timeout < 10000, "Timeout waiting for rx_ready"
-
-    received = int(dut.rx_data.value)
-    assert received == 0xAA, f"Expected 0xAA with baud rate variation, got 0x{received:02x}"
+    # Wait for reception to complete
+    await rx_task
 
 
 @cocotb.test()
@@ -344,17 +331,14 @@ async def test_uart_rx_reset_during_reception(dut):
     dut.rx.value = 1
     await RisingEdge(dut.clk)
 
+    # Start monitoring for rx_ready pulse
+    rx_task = cocotb.start_soon(wait_for_rx_ready_pulse(dut, 0x42))
+
     # Should be ready to receive again
     await send_uart_byte(dut, 0x42)
 
-    timeout = 0
-    while dut.rx_ready.value == 0:
-        await RisingEdge(dut.clk)
-        timeout += 1
-        assert timeout < 10000, "Should recover after reset"
-
-    received = int(dut.rx_data.value)
-    assert received == 0x42, "Should receive correctly after reset"
+    # Wait for reception to complete
+    await rx_task
 
 
 # cocotb test configuration

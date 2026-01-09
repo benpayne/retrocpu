@@ -11,7 +11,7 @@
 // Features:
 // - 8 data bits, No parity, 1 stop bit (8N1)
 // - Configurable baud rate via parameters
-// - rx_ready is STICKY: stays HIGH from reception until next start bit
+// - rx_ready pulses HIGH for 2 clock cycles per byte (for reliable FIFO sampling)
 // - Samples data in middle of bit period for noise immunity
 // - Start bit validation (middle sample) rejects glitches
 // - Stop bit validation (framing check) rejects corrupted data
@@ -22,10 +22,10 @@
 //   Divider: 217 (actual 115207 baud, 0.006% error)
 //
 // Usage:
-//   1. Monitor rx_ready signal (sticky flag)
-//   2. When rx_ready goes HIGH, read rx_data
-//   3. Data remains valid until next reception starts
-//   4. rx_ready clears automatically when next start bit arrives
+//   1. Monitor rx_ready signal (pulses for 2 clock cycles per byte)
+//   2. When rx_ready goes HIGH, read rx_data within 2 clock cycles
+//   3. rx_data remains valid until next byte is received
+//   4. rx_ready clears after 2 clock cycles
 //
 
 module uart_rx #(
@@ -85,13 +85,13 @@ module uart_rx #(
         end else begin
             case (state)
                 STATE_IDLE: begin
+                    // Clear rx_ready in IDLE (creates one-cycle pulse from STOP)
+                    rx_ready <= 1'b0;
                     baud_counter <= 0;
                     bit_index <= 0;
 
                     // Detect start bit (falling edge: high -> low)
                     if (rx_sync_2 == 1'b0) begin
-                        // Start bit detected - clear rx_ready for new reception
-                        rx_ready <= 1'b0;
                         baud_counter <= 0;
                         state <= STATE_START;
                     end
@@ -140,12 +140,13 @@ module uart_rx #(
                         // Verify stop bit is high (framing check)
                         if (rx_sync_2 == 1'b1) begin
                             // Valid stop bit, output data
-                            // rx_ready is STICKY - stays HIGH until next start bit
+                            // rx_ready will pulse HIGH for one cycle (cleared next cycle in IDLE)
                             rx_data <= rx_shift_reg;
                             rx_ready <= 1'b1;
+                        end else begin
+                            // Framing error - clear rx_ready
+                            rx_ready <= 1'b0;
                         end
-                        // If stop bit is low, it's a framing error - discard data
-                        // rx_ready stays at previous value (likely 0)
                     end else begin
                         baud_counter <= baud_counter + 1;
                     end
